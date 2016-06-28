@@ -107,6 +107,13 @@ func (sr *swarmRouter) createService(ctx context.Context, w http.ResponseWriter,
 		return err
 	}
 
+	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+		if service.Annotations.Labels == nil {
+			service.Annotations.Labels = make(map[string]string)
+		}
+		service.Annotations.Labels["com.docker.swarm.owner"] = r.TLS.PeerCertificates[0].Subject.CommonName
+	}
+
 	id, err := sr.backend.CreateService(service)
 	if err != nil {
 		logrus.Errorf("Error reating service %s: %v", id, err)

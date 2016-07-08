@@ -1,6 +1,7 @@
 // +build linux
+// NOTE: This file is copied from graphdriver/overlay/copy.go and only slightly adapted to make it fit.
 
-package overlay
+package overlay_xfs
 
 import (
 	"fmt"

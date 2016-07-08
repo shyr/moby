@@ -566,6 +566,43 @@ options for `zfs` start with `zfs` and options for `btrfs` start with `btrfs`.
     Example use:
         $ docker daemon -s btrfs --storage-opt btrfs.min_space=10G
 
+#### overlay_xfs options
+
+* `overlay.xfs.quota.bsoft`
+
+    Specifies the soft limit (in bytes) to overlay directory for containers. use m/g to specify limits
+
+    Example use:
+
+        $ dockerd -s overlay_xfs --storage-opt overlay.xfs.quota.bsoft=100m
+
+
+* `overlay.xfs.quota.bhard`
+
+    Specifies the hard limit (in bytes) to overlay directory for containers. use m/g to specify limits
+
+    Example use:
+
+        $ dockerd -s overlay_xfs --storage-opt overlay.xfs.quota.bhard=1G
+
+
+* `overlay.xfs.quota.isoft`
+
+    Specifies the soft limit for inodes to overlay directory for containers.
+
+    Example use:
+
+        $ dockerd -s overlay_xfs --storage-opt overlay.xfs.quota.isoft=10000
+
+
+* `overlay.xfs.quota.ihard`
+
+    Specifies the hard limit for inodes to overlay directory for containers.
+
+    Example use:
+
+        $ dockerd -s overlay_xfs --storage-opt overlay.xfs.quota.ihard=20000
+
 ## Docker runtime execution options
 
 The Docker daemon relies on a

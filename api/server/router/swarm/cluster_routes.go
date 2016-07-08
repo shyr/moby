@@ -114,9 +114,12 @@ func (sr *swarmRouter) createService(ctx context.Context, w http.ResponseWriter,
 		service.Annotations.Labels["com.docker.swarm.owner"] = r.TLS.PeerCertificates[0].Subject.CommonName
 	}
 
-	id, err := sr.backend.CreateService(service)
+	// Get returns "" if the header does not exist
+	encodedAuth := r.Header.Get("X-Registry-Auth")
+
+	id, err := sr.backend.CreateService(service, encodedAuth)
 	if err != nil {
-		logrus.Errorf("Error reating service %s: %v", id, err)
+		logrus.Errorf("Error creating service %s: %v", id, err)
 		return err
 	}
 
@@ -137,7 +140,10 @@ func (sr *swarmRouter) updateService(ctx context.Context, w http.ResponseWriter,
 		return fmt.Errorf("Invalid service version '%s': %s", rawVersion, err.Error())
 	}
 
-	if err := sr.backend.UpdateService(vars["id"], version, service); err != nil {
+	// Get returns "" if the header does not exist
+	encodedAuth := r.Header.Get("X-Registry-Auth")
+
+	if err := sr.backend.UpdateService(vars["id"], version, service, encodedAuth); err != nil {
 		logrus.Errorf("Error updating service %s: %v", vars["id"], err)
 		return err
 	}

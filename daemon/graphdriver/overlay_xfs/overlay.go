@@ -172,22 +172,26 @@ func parseOptions(opt []string) (options, error) {
 		key = strings.ToLower(key)
 		switch key {
 		case "overlay.xfs.quota.bsoft":
-			if regexp.MatchString("^[0-9]+[mgMG]{1}$", val) == false {
+			matched, err := regexp.MatchString("^[0-9]+[mgMG]{1}$", val)
+			if matched == false || err != nil {
 				return ops, fmt.Errorf("Invalid %s option value", key);
 			}
 			ops.xfsQuotaLimit += (" bsoft=" + val)
 		case "overlay.xfs.quota.bhard":
-			if regexp.MatchString("^[0-9]+[mgMG]{1}$", val) {
+			matched, err := regexp.MatchString("^[0-9]+[mgMG]{1}$", val)
+			if matched == false || err != nil {
 				return ops, fmt.Errorf("Invalid %s option value", key);
 			}
 			ops.xfsQuotaLimit += (" bhard=" + val)
 		case "overlay.xfs.quota.isoft":
-			if regexp.MatchString("^[0-9]+$", val) {
+			matched, err := regexp.MatchString("^[0-9]+$", val)
+			if matched == false || err != nil {
 				return ops, fmt.Errorf("Invalid %s option value", key);
 			}
 			ops.xfsQuotaLimit += (" isoft=" + val)
 		case "overlay.xfs.quota.ihard":
-			if regexp.MatchString("^[0-9]+$", val) {
+			matched, err := regexp.MatchString("^[0-9]+$", val)
+			if matched == false || err != nil {
 				return ops, fmt.Errorf("Invalid %s option value", key);
 			}
 			ops.xfsQuotaLimit += (" ihard=" + val)

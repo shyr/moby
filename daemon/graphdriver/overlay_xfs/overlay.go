@@ -368,7 +368,7 @@ func (d *Driver) Create(id, parent, mountLabel string, storageOpt map[string]str
 		if err := d.setXfsPrjId(dir, driver); err != nil {
 			return err
 		}
-		if err := d.applyXfsQuota(dir); err != nil {
+		if err := d.applyXfsQuota(dir, driver); err != nil {
 			return err
 		}
 	}
@@ -377,7 +377,9 @@ func (d *Driver) Create(id, parent, mountLabel string, storageOpt map[string]str
 }
 
 // apply quota for container root directory
-func (d *Driver) applyXfsQuota(dir string) error {
+func (d *Driver) applyXfsQuota(dir string, driver *Driver) error {
+	// set project id (from inode number)
+	projectId := strconv.FormatUint(driver.options.xfsPrjId, 10)
 	// find mount path
 	cmd := "df -P " + dir + " | tail -1 | awk '{print $6}'"
 	path, err := exec.Command("sh", "-c", cmd).CombinedOutput()
@@ -387,14 +389,14 @@ func (d *Driver) applyXfsQuota(dir string) error {
 		return err
 	}
 	// create xfs project
-	cmd = "xfs_quota -x -c 'project -s -p " + dir + " " + strconv.FormatUint(d.options.xfsPrjId, 10) + "' " + string(path)
+	cmd = "xfs_quota -x -c 'project -s -p " + dir + " " + projectId + "' " + string(path)
 	out1, err := exec.Command("sh", "-c", cmd).CombinedOutput()
 	if err != nil {
 		logrus.Errorf("Failed to create xfs project for %s: %s", dir, err.Error())
 		logrus.Debugf("- stdout/stderr : %s", out1)
 		return err
 	}
-	cmd = "xfs_quota -x -c 'limit -p " + d.options.xfsQuotaLimit + " " + strconv.FormatUint(d.options.xfsPrjId, 10) + "' " + string(path)
+	cmd = "xfs_quota -x -c 'limit -p " + d.options.xfsQuotaLimit + " " + projectId + "' " + string(path)
 	out2, err := exec.Command("sh", "-c", cmd).CombinedOutput()
 	if err != nil {
 		logrus.Errorf("Failed to set quota limit for directory %s: %s", dir, err.Error())
@@ -413,6 +415,7 @@ func (d *Driver) setXfsPrjId(dir string, driver *Driver) error {
 		logrus.Errorf("Failed to get stat from quota directory %s: %s", dir, err.Error())
 		return err
 	}
+	logrus.Printf("dev:%d ino:%d", stat.Dev, stat.Ino)
 	driver.options.xfsPrjId = stat.Ino
 	return nil
 }

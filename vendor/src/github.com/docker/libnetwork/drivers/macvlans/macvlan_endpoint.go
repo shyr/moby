@@ -2,6 +2,7 @@ package macvlans
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/libnetwork/driverapi"
@@ -11,6 +12,28 @@ import (
 	"github.com/docker/libnetwork/osl"
 	"github.com/docker/libnetwork/types"
 )
+
+// isIpAcceptable returns whether any network in this system contains the given ip address.
+func isIpAcceptable(ip *net.IPNet) bool {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		logrus.Warnf("Unable to get interface addresses %v", err)
+		return false
+	}
+	for _, addr := range addrs {
+		_, network, err := net.ParseCIDR(addr.String())
+		if err != nil {
+			logrus.Warnf("Unable to parse address: %s", addr.String())
+			return false
+		}
+		logrus.Debugf("isIpAcceptable - Check: %q %s", network, ip)
+		if network.Contains(ip.IP) {
+			logrus.Debugf("isIpAcceptable - Success: %q %s", network, ip)
+			return true
+		}
+	}
+	return false
+}
 
 // CreateEndpoint assigns the mac, ip and endpoint id for the new container
 func (d *driver) CreateEndpoint(nid, eid string, ifInfo driverapi.InterfaceInfo,
@@ -24,6 +47,13 @@ func (d *driver) CreateEndpoint(nid, eid string, ifInfo driverapi.InterfaceInfo,
 	if err != nil {
 		return fmt.Errorf("network id %q not found", nid)
 	}
+
+	for _, addr := range []*net.IPNet{ifInfo.Address(), ifInfo.AddressIPv6()} {
+		if addr != nil && !isIpAcceptable(addr) {
+			return fmt.Errorf("ip %q is not acceptable", addr)
+		}
+	}
+
 	ep := &endpoint{
 		id:     eid,
 		nid:    nid,

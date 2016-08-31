@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/docker/libnetwork/driverapi"
+	"github.com/docker/libnetwork/drivers/macvlans"
 	"github.com/docker/libnetwork/drivers/overlay/ovmanager"
 	"github.com/docker/libnetwork/drvregistry"
 	"github.com/docker/libnetwork/ipamapi"
@@ -85,6 +86,11 @@ func New() (*NetworkAllocator, error) {
 
 	// Add the manager component of overlay driver to the registry.
 	if err := reg.AddDriver(DefaultDriver, defaultDriverInitFunc, nil); err != nil {
+		return nil, err
+	}
+
+	// Add the macvlans driver to the registry.
+	if err := reg.AddDriver("macvlans", macvlans.Init, nil); err != nil {
 		return nil, err
 	}
 
@@ -599,9 +605,12 @@ func (na *NetworkAllocator) allocateDriverState(n *api.Network) error {
 		ipv4Data = append(ipv4Data, data)
 	}
 
-	ds, err := d.NetworkAllocate(n.ID, options, ipv4Data, nil)
-	if err != nil {
-		return err
+	ds := make(map[string]string)
+	if d.Type() != "macvlans" { // macvlans drvier doesn't require a network.
+		ds, err = d.NetworkAllocate(n.ID, options, ipv4Data, nil)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Update network object with the obtained driver state.

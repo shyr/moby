@@ -1,4 +1,4 @@
-package macvlan
+package macvlans
 
 import (
 	"fmt"

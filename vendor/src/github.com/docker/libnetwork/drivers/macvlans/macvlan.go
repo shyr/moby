@@ -1,4 +1,4 @@
-package macvlan
+package macvlans
 
 import (
 	"net"
@@ -15,13 +15,13 @@ const (
 	vethLen             = 7
 	containerVethPrefix = "eth"
 	vethPrefix          = "veth"
-	macvlanType         = "macvlan"  // driver type name
-	modePrivate         = "private"  // macvlan mode private
-	modeVepa            = "vepa"     // macvlan mode vepa
-	modeBridge          = "bridge"   // macvlan mode bridge
-	modePassthru        = "passthru" // macvlan mode passthrough
-	parentOpt           = "parent"   // parent interface -o parent
-	modeOpt             = "_mode"    // macvlan mode ux opt suffix
+	macvlanType         = "macvlans" // driver type name
+	modePrivate         = "private"   // macvlan mode private
+	modeVepa            = "vepa"      // macvlan mode vepa
+	modeBridge          = "bridge"    // macvlan mode bridge
+	modePassthru        = "passthru"  // macvlan mode passthrough
+	parentOpt           = "parent"    // parent interface -o parent
+	modeOpt             = "_mode"     // macvlan mode ux opt suffix
 )
 
 var driverModeOpt = macvlanType + modeOpt // mode --option macvlan_mode
@@ -60,7 +60,7 @@ type network struct {
 // Init initializes and registers the libnetwork macvlan driver
 func Init(dc driverapi.DriverCallback, config map[string]interface{}) error {
 	c := driverapi.Capability{
-		DataScope: datastore.LocalScope,
+		DataScope: datastore.GlobalScope,
 	}
 	d := &driver{
 		networks: networkTable{},

@@ -1,4 +1,4 @@
-package macvlan
+package macvlans
 
 import (
 	"encoding/json"
@@ -247,7 +247,7 @@ func (config *configuration) CopyTo(o datastore.KVObject) error {
 }
 
 func (config *configuration) DataScope() string {
-	return datastore.LocalScope
+	return datastore.GlobalScope
 }
 
 func (ep *endpoint) MarshalJSON() ([]byte, error) {
@@ -347,5 +347,5 @@ func (ep *endpoint) CopyTo(o datastore.KVObject) error {
 }
 
 func (ep *endpoint) DataScope() string {
-	return datastore.LocalScope
+	return datastore.GlobalScope
 }

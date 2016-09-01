@@ -18,7 +18,9 @@ import (
 	"github.com/docker/docker/pkg/idtools"
 
 	"github.com/docker/docker/pkg/mount"
+	"github.com/docker/docker/pkg/parsers"
 	"github.com/opencontainers/runc/libcontainer/label"
+	"strings"
 )
 
 // This is a small wrapper over the NaiveDiffWriter that lets us have a custom
@@ -60,6 +62,10 @@ func (d *naiveDiffDriverWithApply) ApplyDiff(id, parent string, diff archive.Rea
 	return b, err
 }
 
+type options struct {
+	quota graphdriver.Quota
+}
+
 // This backend uses the overlay union filesystem for containers
 // plus hard link file sharing for images.
 
@@ -94,6 +100,8 @@ type Driver struct {
 	uidMaps []idtools.IDMap
 	gidMaps []idtools.IDMap
 	ctr     *graphdriver.RefCounter
+	quotaCtl *graphdriver.QuotaCtl
+	options options
 }
 
 func init() {
@@ -136,14 +144,50 @@ func Init(home string, options []string, uidMaps, gidMaps []idtools.IDMap) (grap
 		return nil, err
 	}
 
+	opt, err := parseOptions(options)
+	if err != nil {
+		return nil, err
+	}
+
 	d := &Driver{
 		home:    home,
 		uidMaps: uidMaps,
 		gidMaps: gidMaps,
 		ctr:     graphdriver.NewRefCounter(graphdriver.NewFsChecker(graphdriver.FsMagicOverlay)),
+		options: opt,
+	}
+
+	if opt.quota.Size != 0 {
+		if d.quotaCtl, err = graphdriver.NewQuotaCtl(home); err != nil {
+			return nil, err
+		}
 	}
 
 	return NaiveDiffDriverWithApply(d, uidMaps, gidMaps), nil
+}
+
+func parseOptions(opt []string) (options, error) {
+	var ops options
+	for _, option := range opt {
+		key, val, err := parsers.ParseKeyValueOpt(option)
+		if err != nil {
+			return ops, err
+		}
+		key = strings.ToLower(key)
+		switch key {
+		case "overlay.xfs.size":
+			if backingFs != "xfs" {
+				return ops, fmt.Errorf("Option %s is not supported over %s", key, backingFs)
+			}
+			ops.quota.Size, err = graphdriver.BytesStringToUint64(val)
+			if err != nil {
+				return ops, fmt.Errorf("Invalid %s option value", key)
+			}
+		default:
+			return ops, fmt.Errorf("Unknown option %s", key)
+		}
+	}
+	return ops, nil
 }
 
 func supportsOverlay() error {
@@ -240,6 +284,15 @@ func (d *Driver) Create(id, parent, mountLabel string, storageOpt map[string]str
 	}
 	if err := idtools.MkdirAs(dir, 0700, rootUID, rootGID); err != nil {
 		return err
+	}
+
+	//
+	// set quota at this points because pre-exist dir's doesn't effected by quota
+	//
+	if d.options.quota.Size != 0 {
+		if err := d.quotaCtl.SetQuota(dir, d.options.quota); err != nil {
+			return err
+		}
 	}
 
 	defer func() {

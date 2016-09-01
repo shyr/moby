@@ -13,6 +13,8 @@ import (
 	"github.com/docker/libnetwork/types"
 )
 
+const macvlansEndpointPrefix = "macvlans/endpoint"
+
 // isIpAcceptable returns whether any network in this system contains the given ip address.
 func isIpAcceptable(ip *net.IPNet) bool {
 	addrs, err := net.InterfaceAddrs()

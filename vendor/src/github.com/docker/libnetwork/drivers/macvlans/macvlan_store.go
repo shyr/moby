@@ -7,8 +7,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/libnetwork/datastore"
-	"github.com/docker/libnetwork/discoverapi"
-	"github.com/docker/libnetwork/netlabel"
 	"github.com/docker/libnetwork/types"
 )
 
@@ -40,25 +38,6 @@ type ipv4Subnet struct {
 type ipv6Subnet struct {
 	SubnetIP string
 	GwIP     string
-}
-
-// initStore drivers are responsible for caching their own persistent state
-func (d *driver) initStore(option map[string]interface{}) error {
-	if data, ok := option[netlabel.LocalKVClient]; ok {
-		var err error
-		dsc, ok := data.(discoverapi.DatastoreConfigData)
-		if !ok {
-			return types.InternalErrorf("incorrect data in datastore configuration: %v", data)
-		}
-		d.store, err = datastore.NewDataStoreFromConfig(dsc)
-		if err != nil {
-			return types.InternalErrorf("macvlan driver failed to initialize data store: %v", err)
-		}
-
-		return d.populateNetworks()
-	}
-
-	return nil
 }
 
 // populateNetworks is invoked at driver init to recreate persistently stored networks

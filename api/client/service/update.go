@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -41,14 +42,12 @@ func newUpdateCommand(dockerCli *client.DockerCli) *cobra.Command {
 	flags.Var(newListOptsVar(), flagContainerLabelRemove, "Remove a container label by its key")
 	flags.Var(newListOptsVar(), flagMountRemove, "Remove a mount by its target path")
 	flags.Var(newListOptsVar(), flagPublishRemove, "Remove a published port by its target port")
-	flags.Var(newListOptsVar(), flagNetworkRemove, "Remove a network by name")
 	flags.Var(newListOptsVar(), flagConstraintRemove, "Remove a constraint")
 	flags.Var(&opts.labels, flagLabelAdd, "Add or update service labels")
 	flags.Var(&opts.containerLabels, flagContainerLabelAdd, "Add or update container labels")
 	flags.Var(&opts.env, flagEnvAdd, "Add or update environment variables")
 	flags.Var(&opts.mounts, flagMountAdd, "Add or update a mount on a service")
 	flags.StringSliceVar(&opts.constraints, flagConstraintAdd, []string{}, "Add or update placement constraints")
-	flags.StringSliceVar(&opts.networks, flagNetworkAdd, []string{}, "Add or update network attachments")
 	flags.Var(&opts.endpoint.ports, flagPublishAdd, "Add or update a published port")
 	return cmd
 }
@@ -203,7 +202,6 @@ func updateService(flags *pflag.FlagSet, spec *swarm.ServiceSpec) error {
 		updateString(flagUpdateFailureAction, &spec.UpdateConfig.FailureAction)
 	}
 
-	updateNetworks(flags, &spec.Networks)
 	if flags.Changed(flagEndpointMode) {
 		value, _ := flags.GetString(flagEndpointMode)
 		if spec.EndpointSpec == nil {
@@ -216,7 +214,9 @@ func updateService(flags *pflag.FlagSet, spec *swarm.ServiceSpec) error {
 		if spec.EndpointSpec == nil {
 			spec.EndpointSpec = &swarm.EndpointSpec{}
 		}
-		updatePorts(flags, &spec.EndpointSpec.Ports)
+		if err := updatePorts(flags, &spec.EndpointSpec.Ports); err != nil {
+			return err
+		}
 	}
 
 	if err := updateLogDriver(flags, &spec.TaskTemplate); err != nil {
@@ -295,10 +295,22 @@ func updateLabels(flags *pflag.FlagSet, field *map[string]string) {
 }
 
 func updateEnvironment(flags *pflag.FlagSet, field *[]string) {
+	envSet := map[string]string{}
+	for _, v := range *field {
+		envSet[envKey(v)] = v
+	}
 	if flags.Changed(flagEnvAdd) {
 		value := flags.Lookup(flagEnvAdd).Value.(*opts.ListOpts)
-		*field = append(*field, value.GetAll()...)
+		for _, v := range value.GetAll() {
+			envSet[envKey(v)] = v
+		}
 	}
+
+	*field = []string{}
+	for _, v := range envSet {
+		*field = append(*field, v)
+	}
+
 	toRemove := buildToRemoveSet(flags, flagEnvRemove)
 	*field = removeItems(*field, toRemove, envKey)
 }
@@ -357,23 +369,54 @@ func updateMounts(flags *pflag.FlagSet, mounts *[]swarm.Mount) {
 	*mounts = newMounts
 }
 
-func updatePorts(flags *pflag.FlagSet, portConfig *[]swarm.PortConfig) {
+type byPortConfig []swarm.PortConfig
+
+func (r byPortConfig) Len() int      { return len(r) }
+func (r byPortConfig) Swap(i, j int) { r[i], r[j] = r[j], r[i] }
+func (r byPortConfig) Less(i, j int) bool {
+	// We convert PortConfig into `port/protocol`, e.g., `80/tcp`
+	// In updatePorts we already filter out with map so there is duplicate entries
+	return portConfigToString(&r[i]) < portConfigToString(&r[j])
+}
+
+func portConfigToString(portConfig *swarm.PortConfig) string {
+	protocol := portConfig.Protocol
+	if protocol == "" {
+		protocol = "tcp"
+	}
+	return fmt.Sprintf("%v/%s", portConfig.PublishedPort, protocol)
+}
+
+func updatePorts(flags *pflag.FlagSet, portConfig *[]swarm.PortConfig) error {
+	// The key of the map is `port/protocol`, e.g., `80/tcp`
+	portSet := map[string]swarm.PortConfig{}
+	// Check to see if there are any conflict in flags.
 	if flags.Changed(flagPublishAdd) {
 		values := flags.Lookup(flagPublishAdd).Value.(*opts.ListOpts).GetAll()
 		ports, portBindings, _ := nat.ParsePortSpecs(values)
 
 		for port := range ports {
-			*portConfig = append(*portConfig, convertPortToPortConfig(port, portBindings)...)
+			newConfigs := convertPortToPortConfig(port, portBindings)
+			for _, entry := range newConfigs {
+				if v, ok := portSet[portConfigToString(&entry)]; ok && v != entry {
+					return fmt.Errorf("conflicting port mapping between %v:%v/%s and %v:%v/%s", entry.PublishedPort, entry.TargetPort, entry.Protocol, v.PublishedPort, v.TargetPort, v.Protocol)
+				}
+				portSet[portConfigToString(&entry)] = entry
+			}
 		}
 	}
 
-	if !flags.Changed(flagPublishRemove) {
-		return
+	// Override previous PortConfig in service if there is any duplicate
+	for _, entry := range *portConfig {
+		if _, ok := portSet[portConfigToString(&entry)]; !ok {
+			portSet[portConfigToString(&entry)] = entry
+		}
 	}
+
 	toRemove := flags.Lookup(flagPublishRemove).Value.(*opts.ListOpts).GetAll()
 	newPorts := []swarm.PortConfig{}
 portLoop:
-	for _, port := range *portConfig {
+	for _, port := range portSet {
 		for _, rawTargetPort := range toRemove {
 			targetPort := nat.Port(rawTargetPort)
 			if equalPort(targetPort, port) {
@@ -382,29 +425,15 @@ portLoop:
 		}
 		newPorts = append(newPorts, port)
 	}
+	// Sort the PortConfig to avoid unnecessary updates
+	sort.Sort(byPortConfig(newPorts))
 	*portConfig = newPorts
+	return nil
 }
 
 func equalPort(targetPort nat.Port, port swarm.PortConfig) bool {
 	return (string(port.Protocol) == targetPort.Proto() &&
 		port.TargetPort == uint32(targetPort.Int()))
-}
-
-func updateNetworks(flags *pflag.FlagSet, attachments *[]swarm.NetworkAttachmentConfig) {
-	if flags.Changed(flagNetworkAdd) {
-		networks, _ := flags.GetStringSlice(flagNetworkAdd)
-		for _, network := range networks {
-			*attachments = append(*attachments, swarm.NetworkAttachmentConfig{Target: network})
-		}
-	}
-	toRemove := buildToRemoveSet(flags, flagNetworkRemove)
-	newNetworks := []swarm.NetworkAttachmentConfig{}
-	for _, network := range *attachments {
-		if _, exists := toRemove[network.Target]; !exists {
-			newNetworks = append(newNetworks, network)
-		}
-	}
-	*attachments = newNetworks
 }
 
 func updateReplicas(flags *pflag.FlagSet, serviceMode *swarm.ServiceMode) error {

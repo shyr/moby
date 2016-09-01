@@ -1,7 +1,7 @@
 <!--[metadata]>
 +++
 title = "Drain a node"
-description = "Drain nodes on the Swarm"
+description = "Drain nodes on the swarm"
 keywords = ["tutorial, cluster management, swarm, service, drain"]
 [menu.main]
 identifier="swarm-tutorial-drain-node"
@@ -45,7 +45,7 @@ update](rolling-update.md) tutorial, start it now:
     c5uo6kdmzpon37mgj9mwglcfw
     ```
 
-4. Run `docker service ps redis` to see how the Swarm manager assigned the
+4. Run `docker service ps redis` to see how the swarm manager assigned the
 tasks to different nodes:
 
     ```bash
@@ -84,16 +84,17 @@ had a task assigned to it:
 
     The drained node shows `Drain` for `AVAILABILITY`.
 
-7. Run `docker service ps redis` to see how the Swarm manager updated the
+7. Run `docker service ps redis` to see how the swarm manager updated the
 task assignments for the `redis` service:
 
     ```bash
     $ docker service ps redis
 
-    ID                         NAME     SERVICE  IMAGE        LAST STATE              DESIRED STATE  NODE
-    7q92v0nr1hcgts2amcjyqg3pq  redis.1  redis    redis:3.0.6  Running 4 minutes       Running        manager1
-    b4hovzed7id8irg1to42egue8  redis.2  redis    redis:3.0.6  Running About a minute  Running        worker2
-    9bg7cezvedmkgg6c8yzvbhwsd  redis.3  redis    redis:3.0.6  Running 4 minutes       Running        worker2
+    ID                         NAME          IMAGE        NODE      DESIRED STATE  CURRENT STATE           ERROR
+    7q92v0nr1hcgts2amcjyqg3pq  redis.1       redis:3.0.6  manager1  Running        Running 4 minutes
+    b4hovzed7id8irg1to42egue8  redis.2       redis:3.0.6  worker2   Running        Running About a minute
+    7h2l8h3q3wqy5f66hlv9ddmi6   \_ redis.2   redis:3.0.6  worker1   Shutdown       Shutdown 2 minutes ago
+    9bg7cezvedmkgg6c8yzvbhwsd  redis.3       redis:3.0.6  worker2   Running        Running 4 minutes
     ```
 
     The Swarm manager maintains the desired state by ending the task on a node

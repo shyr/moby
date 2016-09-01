@@ -1,7 +1,7 @@
 <!--[metadata]>
 +++
 title = "Apply rolling updates"
-description = "Apply rolling updates to a service on the Swarm"
+description = "Apply rolling updates to a service on the swarm"
 keywords = ["tutorial, cluster management, swarm, service, rolling-update"]
 [menu.main]
 identifier="swarm-tutorial-rolling-update"
@@ -138,14 +138,17 @@ desired state:
     ```bash
     $ docker service ps redis
 
-    ID                         NAME     SERVICE  IMAGE        LAST STATE              DESIRED STATE  NODE
-    dos1zffgeofhagnve8w864fco  redis.1  redis    redis:3.0.7  Running 37 seconds      Running        worker1
-    9l3i4j85517skba5o7tn5m8g0  redis.2  redis    redis:3.0.7  Running About a minute  Running        worker2
-    egiuiqpzrdbxks3wxgn8qib1g  redis.3  redis    redis:3.0.7  Running 48 seconds      Running        worker1
+    ID                         NAME         IMAGE        NODE       DESIRED STATE  CURRENT STATE            ERROR
+    dos1zffgeofhagnve8w864fco  redis.1      redis:3.0.7  worker1    Running        Running 37 seconds
+    88rdo6pa52ki8oqx6dogf04fh   \_ redis.1  redis:3.0.6  worker2    Shutdown       Shutdown 56 seconds ago
+    9l3i4j85517skba5o7tn5m8g0  redis.2      redis:3.0.7  worker2    Running        Running About a minute
+    66k185wilg8ele7ntu8f6nj6i   \_ redis.2  redis:3.0.6  worker1    Shutdown       Shutdown 2 minutes ago
+    egiuiqpzrdbxks3wxgn8qib1g  redis.3      redis:3.0.7  worker1    Running        Running 48 seconds
+    ctzktfddb2tepkr45qcmqln04   \_ redis.3  redis:3.0.6  mmanager1  Shutdown       Shutdown 2 minutes ago
     ```
 
     Before Swarm updates all of the tasks, you can see that some are running
     `redis:3.0.6` while others are running `redis:3.0.7`. The output above shows
     the state once the rolling updates are done.
 
-Next, learn about how to [drain a node](drain-node.md) in the Swarm.
+Next, learn about how to [drain a node](drain-node.md) in the swarm.

@@ -208,6 +208,17 @@ func (d *SwarmDaemon) getNode(c *check.C, id string) *swarm.Node {
 	return &node
 }
 
+func (d *SwarmDaemon) removeNode(c *check.C, id string, force bool) {
+	url := "/nodes/" + id
+	if force {
+		url += "?force=1"
+	}
+
+	status, out, err := d.SockRequest("DELETE", url, nil)
+	c.Assert(status, checker.Equals, http.StatusOK, check.Commentf("output: %q", string(out)))
+	c.Assert(err, checker.IsNil)
+}
+
 func (d *SwarmDaemon) updateNode(c *check.C, id string, f ...nodeConstructor) {
 	for i := 0; ; i++ {
 		node := d.getNode(c, id)
@@ -299,4 +310,18 @@ func (d *SwarmDaemon) checkControlAvailable(c *check.C) (interface{}, check.Comm
 	c.Assert(err, checker.IsNil)
 	c.Assert(info.LocalNodeState, checker.Equals, swarm.LocalNodeStateActive)
 	return info.ControlAvailable, nil
+}
+
+func (d *SwarmDaemon) cmdRetryOutOfSequence(args ...string) (string, error) {
+	for i := 0; ; i++ {
+		out, err := d.Cmd(args[0], args[1:]...)
+		if err != nil {
+			if strings.Contains(err.Error(), "update out of sequence") {
+				if i < 10 {
+					continue
+				}
+			}
+		}
+		return out, err
+	}
 }

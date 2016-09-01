@@ -11,25 +11,25 @@ weight="1"
 <![end-metadata]-->
 # Swarm mode overview
 
-To use Docker Engine in swarm mode, install the Docker Engine `v1.12.0-rc1` or
+To use Docker Engine in swarm mode, install the Docker Engine `v1.12.0` or
 later from the [Docker releases GitHub
 repository](https://github.com/docker/docker/releases). Alternatively, install
 the latest Docker for Mac or Docker for Windows Beta.
 
 Docker Engine 1.12 includes swarm mode for natively managing a cluster of
-Docker Engines called a Swarm. Use the Docker CLI to create a swarm, deploy
+Docker Engines called a *swarm*. Use the Docker CLI to create a swarm, deploy
 application services to a swarm, and manage swarm behavior.
 
 
-If you’re using a Docker version prior to `v1.12.0-rc1`, see [Docker
+If you’re using a Docker version prior to `v1.12.0`, see [Docker
 Swarm](https://docs.docker.com/swarm).
 
 ## Feature highlights
 
 * **Cluster management integrated with Docker Engine:** Use the Docker Engine
-CLI to create a Swarm of Docker Engines where you can deploy application
+CLI to create a swarm of Docker Engines where you can deploy application
 services. You don't need additional orchestration software to create or manage
-a Swarm.
+a swarm.
 
 * **Decentralized design:** Instead of handling differentiation between node
 roles at deployment time, the Docker Engine handles any specialization at

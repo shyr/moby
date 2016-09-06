@@ -606,7 +606,10 @@ func (na *NetworkAllocator) allocateDriverState(n *api.Network) error {
 	}
 
 	ds := make(map[string]string)
-	if d.Type() != "macvlans" { // macvlans drvier doesn't require a network.
+	if d.Type() == "macvlans" {
+		// macvlans drvier doesn't require a network.
+		ds = options
+	} else {
 		ds, err = d.NetworkAllocate(n.ID, options, ipv4Data, nil)
 		if err != nil {
 			return err

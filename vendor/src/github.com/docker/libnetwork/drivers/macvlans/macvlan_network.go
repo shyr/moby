@@ -107,13 +107,6 @@ func (d *driver) CreateNetwork(nid string, option map[string]interface{}, nInfo 
 
 // createNetwork is used by new network callbacks and persistent network cache
 func (d *driver) createNetwork(config *configuration) error {
-	networkList := d.getNetworks()
-	for _, nw := range networkList {
-		if config.Parent == nw.config.Parent {
-			return fmt.Errorf("network %s is already using parent interface %s",
-				getDummyName(stringid.TruncateID(nw.config.ID)), config.Parent)
-		}
-	}
 	if !parentExists(config.Parent) {
 		// if the --internal flag is set, create a dummy link
 		if config.Internal {

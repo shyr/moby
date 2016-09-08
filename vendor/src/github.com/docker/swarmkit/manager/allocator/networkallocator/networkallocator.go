@@ -730,9 +730,13 @@ func (na *NetworkAllocator) allocatePools(n *api.Network) (map[string]string, er
 
 		gwIP, _, err := ipam.RequestAddress(poolID, net.ParseIP(ic.Gateway), nil)
 		if err != nil {
-			// Rollback by releasing all the resources allocated so far.
-			releasePools(ipam, ipamConfigs[:i], pools)
-			return nil, err
+			if !(n.Spec.DriverConfig.Name == "macvlans" && err == ipamapi.ErrIPAlreadyAllocated) {
+				// Rollback by releasing all the resources allocated so far.
+				releasePools(ipam, ipamConfigs[:i], pools)
+				return nil, err
+			} else {
+				err = nil
+			}
 		}
 
 		if ic.Subnet == "" {

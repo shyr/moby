@@ -47,6 +47,13 @@ func (v *volumeRouter) postVolumesCreate(ctx context.Context, w http.ResponseWri
 		return err
 	}
 
+	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+		if req.Labels == nil {
+			req.Labels = make(map[string]string)
+		}
+		req.Labels["com.docker.swarm.owner"] = r.TLS.PeerCertificates[0].Subject.CommonName
+	}
+
 	volume, err := v.backend.VolumeCreate(req.Name, req.Driver, req.DriverOpts, req.Labels)
 	if err != nil {
 		return err

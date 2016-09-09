@@ -1280,7 +1280,11 @@ func (n *network) ipamAllocateVersion(ipVer int, ipam ipamapi.Ipam) error {
 				ipamapi.RequestAddressType: netlabel.Gateway,
 			}
 			if d.Gateway, _, err = ipam.RequestAddress(d.PoolID, net.ParseIP(cfg.Gateway), gatewayOpts); err != nil {
-				return types.InternalErrorf("failed to allocate gateway (%v): %v", cfg.Gateway, err)
+				if !(n.networkType == "macvlans" && err == ipamapi.ErrIPAlreadyAllocated) {
+					return types.InternalErrorf("failed to allocate gateway (%v): %v", cfg.Gateway, err)
+				} else {
+					err = nil
+				}
 			}
 		}
 

@@ -789,7 +789,7 @@ func (sb *sandbox) restoreOslSandbox() error {
 		if len(i.llAddrs) != 0 {
 			ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().LinkLocalAddresses(i.llAddrs))
 		}
-		if len(ep.virtualIP) != 0 {
+		if len(ep.virtualIP) != 0 && ep.network.networkType != "macvlans" {
 			vipAlias := &net.IPNet{IP: ep.virtualIP, Mask: net.CIDRMask(32, 32)}
 			ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().IPAliases([]*net.IPNet{vipAlias}))
 		}
@@ -846,7 +846,7 @@ func (sb *sandbox) populateNetworkResources(ep *endpoint) error {
 		if len(i.llAddrs) != 0 {
 			ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().LinkLocalAddresses(i.llAddrs))
 		}
-		if len(ep.virtualIP) != 0 {
+		if len(ep.virtualIP) != 0 && ep.network.networkType != "macvlans" {
 			vipAlias := &net.IPNet{IP: ep.virtualIP, Mask: net.CIDRMask(32, 32)}
 			ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().IPAliases([]*net.IPNet{vipAlias}))
 		}

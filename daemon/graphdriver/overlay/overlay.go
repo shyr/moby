@@ -473,7 +473,13 @@ func (d *Driver) ApplyDiff(id string, parent string, diff archive.Reader) (size 
 		}
 	}()
 
-	if err = copyDir(parentRootDir, tmpRootDir, copyHardlink); err != nil {
+	var flags copyFlags
+	if d.quotaCtl != nil {
+		flags = 0
+	} else {
+		flags = copyHardlink
+	}
+	if err = copyDir(parentRootDir, tmpRootDir, flags); err != nil {
 		return 0, err
 	}
 

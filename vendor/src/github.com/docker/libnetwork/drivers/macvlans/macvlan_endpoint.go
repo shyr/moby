@@ -3,6 +3,7 @@ package macvlans
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/libnetwork/driverapi"
@@ -15,22 +16,10 @@ import (
 
 const macvlansEndpointPrefix = "macvlans/endpoint"
 
-// isIpAcceptable returns whether any network in this system contains the given ip address.
-func isIpAcceptable(ip *net.IPNet) bool {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		logrus.Warnf("Unable to get interface addresses %v", err)
-		return false
-	}
-	for _, addr := range addrs {
-		_, network, err := net.ParseCIDR(addr.String())
-		if err != nil {
-			logrus.Warnf("Unable to parse address: %s", addr.String())
-			return false
-		}
-		logrus.Debugf("isIpAcceptable - Check: %q %s", network, ip)
-		if network.Contains(ip.IP) {
-			logrus.Debugf("isIpAcceptable - Success: %q %s", network, ip)
+// isIpAcceptable returns whether any ip range contains the given ip address.
+func isIpAcceptable(ip net.IP, ipRanges []net.IPNet) bool {
+	for _, ipRange := range ipRanges {
+		if ipRange.Contains(ip) {
 			return true
 		}
 	}
@@ -50,9 +39,25 @@ func (d *driver) CreateEndpoint(nid, eid string, ifInfo driverapi.InterfaceInfo,
 		return fmt.Errorf("network id %q not found", nid)
 	}
 
-	for _, addr := range []*net.IPNet{ifInfo.Address(), ifInfo.AddressIPv6()} {
-		if addr != nil && !isIpAcceptable(addr) {
-			return fmt.Errorf("ip %q is not acceptable", addr)
+	if ipRangesString := epOptions[netlabel.MacvlansIpRanges]; ipRangesString != nil {
+		ipRanges := []net.IPNet{}
+		for _, ipRange := range strings.Split(ipRangesString.(string), ",") {
+			if _, cidr, err := net.ParseCIDR(ipRange); cidr != nil {
+				ipRanges = append(ipRanges, *cidr)
+			} else {
+				logrus.Warnf("Invalid ip range: %s: %s", ipRange, err)
+			}
+		}
+		addrs := []*net.IPNet{ifInfo.Address(), ifInfo.AddressIPv6()}
+		for _, addr := range addrs {
+			if addr == nil {
+				continue
+			}
+			if !isIpAcceptable(addr.IP, ipRanges) {
+				return fmt.Errorf(
+					"IP %v is not acceptable: %s=%v",
+					addr, netlabel.MacvlansIpRanges, ipRangesString)
+			}
 		}
 	}
 

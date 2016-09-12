@@ -548,6 +548,18 @@ func (daemon *Daemon) updateNetworkConfig(container *container.Container, idOrNa
 	return n, nil
 }
 
+func (daemon *Daemon) getLabel(name string) string {
+	logrus.Debugf("daemon.getLabel: Getting %s from %+v", name, daemon.configStore.Labels)
+	for _, label := range daemon.configStore.Labels {
+		kv := strings.SplitN(label, "=", 2)
+		if len(kv) > 1 && kv[0] == name {
+			logrus.Debugf("daemon.getLabel: Got %s", kv[1])
+			return kv[1]
+		}
+	}
+	return ""
+}
+
 func (daemon *Daemon) connectToNetwork(container *container.Container, idOrName string, endpointConfig *networktypes.EndpointSettings, updateSettings bool) (err error) {
 	if endpointConfig == nil {
 		endpointConfig = &networktypes.EndpointSettings{}
@@ -567,6 +579,10 @@ func (daemon *Daemon) connectToNetwork(container *container.Container, idOrName 
 	if err != nil {
 		return err
 	}
+	genericOption := options.Generic{
+		netlabel.MacvlansIpRanges: daemon.getLabel(netlabel.MacvlansIpRanges),
+	}
+	createOptions = append(createOptions, libnetwork.EndpointOptionGeneric(genericOption))
 
 	endpointName := strings.TrimPrefix(container.Name, "/")
 	ep, err := n.CreateEndpoint(endpointName, createOptions...)

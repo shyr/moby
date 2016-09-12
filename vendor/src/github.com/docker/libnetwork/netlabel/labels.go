@@ -42,6 +42,9 @@ const (
 	// OverlayVxlanIDList constant represents a list of VXLAN Ids as csv
 	OverlayVxlanIDList = DriverPrefix + ".overlay.vxlanid_list"
 
+	// MacvlansIpRanges constant represents a list of ip ranges as csv
+	MacvlansIpRanges = DriverPrefix + ".macvlans.ip_ranges"
+
 	// Gateway represents the gateway for the network
 	Gateway = Prefix + ".gateway"
 

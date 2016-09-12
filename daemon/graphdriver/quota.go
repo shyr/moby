@@ -9,6 +9,7 @@ package graphdriver
 #include <linux/fs.h>
 #include <linux/quota.h>
 #include <linux/dqblk_xfs.h>
+#ifndef _LINUX_FS_H
 struct fsxattr {
 	__u32		fsx_xflags;
 	__u32		fsx_extsize;
@@ -16,6 +17,7 @@ struct fsxattr {
 	__u32		fsx_projid;
 	unsigned char	fsx_pad[12];
 };
+#endif
 #define FS_XFLAG_PROJINHERIT	0x00000200
 #define FS_IOC_FSGETXATTR		_IOR ('X', 31, struct fsxattr)
 #define FS_IOC_FSSETXATTR		_IOW ('X', 32, struct fsxattr)

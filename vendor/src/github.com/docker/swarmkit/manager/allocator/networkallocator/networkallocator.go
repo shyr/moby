@@ -5,7 +5,7 @@ import (
 	"net"
 
 	"github.com/docker/libnetwork/driverapi"
-	"github.com/docker/libnetwork/drivers/macvlans"
+	"github.com/docker/libnetwork/drivers/macvlans/mvmanager"
 	"github.com/docker/libnetwork/drivers/overlay/ovmanager"
 	"github.com/docker/libnetwork/drvregistry"
 	"github.com/docker/libnetwork/ipamapi"
@@ -90,7 +90,7 @@ func New() (*NetworkAllocator, error) {
 	}
 
 	// Add the macvlans driver to the registry.
-	if err := reg.AddDriver("macvlans", macvlans.Init, nil); err != nil {
+	if err := reg.AddDriver("macvlans", mvmanager.Init, nil); err != nil {
 		return nil, err
 	}
 

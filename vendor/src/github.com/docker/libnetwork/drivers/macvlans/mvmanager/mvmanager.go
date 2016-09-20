@@ -1,4 +1,4 @@
-package ovmanager
+package mvmanager
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	networkType  = "overlay"
+	networkType  = "macvlans"
 	vxlanIDStart = 256
 	vxlanIDEnd   = (1 << 24) - 1
 )
@@ -45,7 +45,7 @@ type network struct {
 	sync.Mutex
 }
 
-// Init registers a new instance of overlay driver
+// Init registers a new instance of macvlans driver
 func Init(dc driverapi.DriverCallback, config map[string]interface{}) error {
 	var err error
 	c := driverapi.Capability{
@@ -67,11 +67,11 @@ func Init(dc driverapi.DriverCallback, config map[string]interface{}) error {
 
 func (d *driver) NetworkAllocate(id string, option map[string]string, ipV4Data, ipV6Data []driverapi.IPAMData) (map[string]string, error) {
 	if id == "" {
-		return nil, fmt.Errorf("invalid network id for overlay network")
+		return nil, fmt.Errorf("invalid network id for macvlans network")
 	}
 
 	if ipV4Data == nil {
-		return nil, fmt.Errorf("empty ipv4 data passed during overlay network creation")
+		return nil, fmt.Errorf("empty ipv4 data passed during macvlans network creation")
 	}
 
 	n := &network{
@@ -84,7 +84,7 @@ func (d *driver) NetworkAllocate(id string, option map[string]string, ipV4Data, 
 	vxlanIDList := make([]uint32, 0, len(ipV4Data))
 	for key, val := range option {
 		if key == netlabel.OverlayVxlanIDList {
-			logrus.Debugf("overlay network option: %s", val)
+			logrus.Debugf("macvlans network option: %s", val)
 			valStrList := strings.Split(val, ",")
 			for _, idStr := range valStrList {
 				vni, err := strconv.Atoi(idStr)
@@ -132,7 +132,7 @@ func (d *driver) NetworkAllocate(id string, option map[string]string, ipV4Data, 
 
 func (d *driver) NetworkFree(id string) error {
 	if id == "" {
-		return fmt.Errorf("invalid network id passed while freeing overlay network")
+		return fmt.Errorf("invalid network id passed while freeing macvlans network")
 	}
 
 	d.Lock()
@@ -140,7 +140,7 @@ func (d *driver) NetworkFree(id string) error {
 	d.Unlock()
 
 	if !ok {
-		return fmt.Errorf("overlay network with id %s not found", id)
+		return fmt.Errorf("macvlans network with id %s not found", id)
 	}
 
 	// Release all vxlan IDs in one shot.

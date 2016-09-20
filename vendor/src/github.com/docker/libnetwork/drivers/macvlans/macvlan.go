@@ -55,6 +55,8 @@ type driver struct {
 	bindAddress      string
 	advertiseAddress string
 	localStore       datastore.DataStore
+	neighIP          string
+	joinOnce         sync.Once
 }
 
 type endpoint struct {
@@ -161,8 +163,69 @@ func (d *driver) RevokeExternalConnectivity(nid, eid string) error {
 	return nil
 }
 
-// DiscoverNew is a notification for a new discovery event
+// DiscoverNew is a notification for a new discovery event, such as a new node joining a cluster
 func (d *driver) DiscoverNew(dType discoverapi.DiscoveryType, data interface{}) error {
+	var err error
+	switch dType {
+	case discoverapi.NodeDiscovery:
+		nodeData, ok := data.(discoverapi.NodeDiscoveryData)
+		if !ok || nodeData.Address == "" {
+			return fmt.Errorf("invalid discovery data")
+		}
+		d.nodeJoin(nodeData.Address, nodeData.BindAddress, nodeData.Self)
+	case discoverapi.DatastoreConfig:
+		if d.store != nil {
+			return types.ForbiddenErrorf("cannot accept datastore configuration: Overlay driver has a datastore configured already")
+		}
+		dsc, ok := data.(discoverapi.DatastoreConfigData)
+		if !ok {
+			return types.InternalErrorf("incorrect data in datastore configuration: %v", data)
+		}
+		d.store, err = datastore.NewDataStoreFromConfig(dsc)
+		if err != nil {
+			return types.InternalErrorf("failed to initialize data store: %v", err)
+		}
+	case discoverapi.EncryptionKeysConfig:
+		encrData, ok := data.(discoverapi.DriverEncryptionConfig)
+		if !ok {
+			return fmt.Errorf("invalid encryption key notification data")
+		}
+		keys := make([]*key, 0, len(encrData.Keys))
+		for i := 0; i < len(encrData.Keys); i++ {
+			k := &key{
+				value: encrData.Keys[i],
+				tag:   uint32(encrData.Tags[i]),
+			}
+			keys = append(keys, k)
+		}
+		d.setKeys(keys)
+	case discoverapi.EncryptionKeysUpdate:
+		var newKey, delKey, priKey *key
+		encrData, ok := data.(discoverapi.DriverEncryptionUpdate)
+		if !ok {
+			return fmt.Errorf("invalid encryption key notification data")
+		}
+		if encrData.Key != nil {
+			newKey = &key{
+				value: encrData.Key,
+				tag:   uint32(encrData.Tag),
+			}
+		}
+		if encrData.Primary != nil {
+			priKey = &key{
+				value: encrData.Primary,
+				tag:   uint32(encrData.PrimaryTag),
+			}
+		}
+		if encrData.Prune != nil {
+			delKey = &key{
+				value: encrData.Prune,
+				tag:   uint32(encrData.PruneTag),
+			}
+		}
+		d.updateKeys(newKey, priKey, delKey)
+	default:
+	}
 	return nil
 }
 
@@ -176,7 +239,7 @@ func (d *driver) EventNotify(etype driverapi.EventType, nid, tableName, key stri
 
 func (d *driver) deleteEndpointFromStore(e *endpoint) error {
 	if d.localStore == nil {
-		return fmt.Errorf("overlay local store not initialized, ep not deleted")
+		return fmt.Errorf("macvlans local store not initialized, ep not deleted")
 	}
 
 	if err := d.localStore.DeleteObjectAtomic(e); err != nil {
@@ -241,6 +304,74 @@ func (d *driver) restoreEndpoints() error {
 		d.peerDbAdd(ep.nid, ep.id, ep.addr.IP, ep.addr.Mask, ep.mac, net.ParseIP(d.advertiseAddress), true)
 	}
 	return nil
+}
+
+func validateSelf(node string) error {
+	advIP := net.ParseIP(node)
+	if advIP == nil {
+		return fmt.Errorf("invalid self address (%s)", node)
+	}
+
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return fmt.Errorf("Unable to get interface addresses %v", err)
+	}
+	for _, addr := range addrs {
+		ip, _, err := net.ParseCIDR(addr.String())
+		if err == nil && ip.Equal(advIP) {
+			return nil
+		}
+	}
+	return fmt.Errorf("Multi-Host overlay networking requires cluster-advertise(%s) to be configured with a local ip-address that is reachable within the cluster", advIP.String())
+}
+
+func (d *driver) nodeJoin(advertiseAddress, bindAddress string, self bool) {
+	if self && !d.isSerfAlive() {
+		d.Lock()
+		d.advertiseAddress = advertiseAddress
+		d.bindAddress = bindAddress
+		d.Unlock()
+
+		// If there is no cluster store there is no need to start serf.
+		if d.store != nil {
+			if err := validateSelf(advertiseAddress); err != nil {
+				logrus.Warnf("%s", err.Error())
+			}
+			err := d.serfInit()
+			if err != nil {
+				logrus.Errorf("initializing serf instance failed: %v", err)
+				d.Lock()
+				d.advertiseAddress = ""
+				d.bindAddress = ""
+				d.Unlock()
+				return
+			}
+		}
+	}
+
+	d.Lock()
+	if !self {
+		d.neighIP = advertiseAddress
+	}
+	neighIP := d.neighIP
+	d.Unlock()
+
+	if d.serfInstance != nil && neighIP != "" {
+		var err error
+		d.joinOnce.Do(func() {
+			err = d.serfJoin(neighIP)
+			if err == nil {
+				d.pushLocalDb()
+			}
+		})
+		if err != nil {
+			logrus.Errorf("joining serf neighbor %s failed: %v", advertiseAddress, err)
+			d.Lock()
+			d.joinOnce = sync.Once{}
+			d.Unlock()
+			return
+		}
+	}
 }
 
 func (d *driver) pushLocalEndpointEvent(action, nid, eid string) {

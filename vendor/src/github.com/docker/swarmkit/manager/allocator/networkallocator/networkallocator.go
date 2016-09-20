@@ -565,7 +565,11 @@ func (na *NetworkAllocator) freeDriverState(n *api.Network) error {
 		return err
 	}
 
-	return d.NetworkFree(n.ID)
+	if d.Type() == "macvlans" {
+		return nil
+	} else {
+		return d.NetworkFree(n.ID)
+	}
 }
 
 func (na *NetworkAllocator) allocateDriverState(n *api.Network) error {

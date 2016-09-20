@@ -176,7 +176,7 @@ func (d *driver) EventNotify(etype driverapi.EventType, nid, tableName, key stri
 
 func (d *driver) deleteEndpointFromStore(e *endpoint) error {
 	if d.localStore == nil {
-		return fmt.Errorf("overlay local store not initialized, ep not deleted")
+		return fmt.Errorf("macvlans local store not initialized, ep not deleted")
 	}
 
 	if err := d.localStore.DeleteObjectAtomic(e); err != nil {

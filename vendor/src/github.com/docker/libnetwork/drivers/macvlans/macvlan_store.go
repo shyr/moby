@@ -91,7 +91,6 @@ func (d *driver) populateEndpoints() error {
 // storeUpdate used to update persistent macvlan network records as they are created
 func (d *driver) storeUpdate(kvObject datastore.KVObject) error {
 	if d.store == nil {
-		logrus.Warnf("macvlan store not initialized. kv object %s is not added to the store", datastore.Key(kvObject.Key()...))
 		return nil
 	}
 	if err := d.store.PutObjectAtomic(kvObject); err != nil {
@@ -104,7 +103,6 @@ func (d *driver) storeUpdate(kvObject datastore.KVObject) error {
 // storeDelete used to delete macvlan records from persistent cache as they are deleted
 func (d *driver) storeDelete(kvObject datastore.KVObject) error {
 	if d.store == nil {
-		logrus.Debugf("macvlan store not initialized. kv object %s is not deleted from store", datastore.Key(kvObject.Key()...))
 		return nil
 	}
 retry:

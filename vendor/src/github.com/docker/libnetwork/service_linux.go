@@ -5,6 +5,8 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +22,7 @@ import (
 	"github.com/docker/libnetwork/ipvs"
 	"github.com/docker/libnetwork/ns"
 	"github.com/gogo/protobuf/proto"
+	consulapi "github.com/hashicorp/consul/api"
 	"github.com/vishvananda/netlink/nl"
 	"github.com/vishvananda/netns"
 )
@@ -35,6 +38,71 @@ func newService(name string, id string, ingressPorts []*PortConfig) *service {
 		ingressPorts:  ingressPorts,
 		loadBalancers: make(map[string]*loadBalancer),
 	}
+}
+
+func newConsulClient(consulURLString string) (*consulapi.Client, error) {
+	consulURL, err := url.Parse(consulURLString)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return consulapi.NewClient(&consulapi.Config{
+		Address:    consulURL.Host,
+		Scheme:     consulURL.Scheme,
+		HttpClient: http.DefaultClient,
+	})
+}
+
+func deregisterService(consulURL string, name string) error {
+	logrus.Debugf("Deregistering service '%s' to consul DNS", name)
+
+	errorFmt := "Failed to deregister service '%s' to consul DNS: %v"
+
+	client, err := newConsulClient(consulURL)
+
+	if err != nil {
+		return fmt.Errorf(errorFmt, name, err)
+	}
+
+	agent := client.Agent()
+	err = agent.ServiceDeregister(name)
+
+	if err != nil {
+		return fmt.Errorf(errorFmt, name, err)
+	}
+
+	logrus.Debugf("Service '%s' deregistered successfully to consul DNS", name)
+
+	return nil
+}
+
+func registerService(consulURL string, name string, vip string) error {
+	logrus.Debugf("Registering service '%s' to consul DNS", name)
+
+	errorFmt := "Failed to register service '%s' to consul DNS: %v"
+
+	client, err := newConsulClient(consulURL)
+
+	if err != nil {
+		return fmt.Errorf(errorFmt, name, err)
+	}
+
+	agent := client.Agent()
+	service := &consulapi.AgentServiceRegistration{
+		ID:      name,
+		Name:    name,
+		Address: vip,
+	}
+	err = agent.ServiceRegister(service)
+
+	if err != nil {
+		return fmt.Errorf(errorFmt, name, err)
+	}
+
+	logrus.Debugf("Service '%s' registered successfully to consul DNS", name)
+
+	return nil
 }
 
 func (c *controller) addServiceBinding(name, sid, nid, eid string, vip net.IP, ingressPorts []*PortConfig, aliases []string, ip net.IP) error {
@@ -105,6 +173,11 @@ func (c *controller) addServiceBinding(name, sid, nid, eid string, vip net.IP, i
 		// we add a new service service in IPVS rules.
 		addService = true
 
+		if consulURLString := n.Info().Labels()["consul.url"]; consulURLString != "" {
+			if err := registerService(consulURLString, name, vip.String()); err != nil {
+				logrus.Warnf("%s", err)
+			}
+		}
 	}
 
 	lb.backEnds[eid] = ip
@@ -195,6 +268,13 @@ func (c *controller) rmServiceBinding(name, sid, nid, eid string, vip net.IP, in
 		n.(*network).deleteSvcRecords(name, vip, nil, false)
 		for _, alias := range aliases {
 			n.(*network).deleteSvcRecords(alias, vip, nil, false)
+		}
+
+		if consulURLString := n.Info().Labels()["consul.url"]; consulURLString != "" {
+			if err := deregisterService(consulURLString, name); err != nil {
+				logrus.Warnf("%s", err)
+			}
+
 		}
 	}
 

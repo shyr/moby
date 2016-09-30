@@ -341,7 +341,7 @@ func (sb *sandbox) populateLoadbalancers(ep *endpoint) {
 		addService := true
 		for _, ip := range lb.backEnds {
 			sb.addLBBackend(ip, lb.vip, lb.fwMark, lb.service.ingressPorts,
-				eIP, gwIP, addService, n.ingress, n.networkType)
+				eIP, gwIP, addService, n.ingress)
 			addService = false
 		}
 		lb.service.Unlock()
@@ -364,7 +364,7 @@ func (n *network) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Po
 				gwIP = ep.Iface().Address().IP
 			}
 
-			sb.addLBBackend(ip, vip, fwMark, ingressPorts, ep.Iface().Address(), gwIP, addService, n.ingress, n.networkType)
+			sb.addLBBackend(ip, vip, fwMark, ingressPorts, ep.Iface().Address(), gwIP, addService, n.ingress)
 		}
 
 		return false
@@ -387,7 +387,7 @@ func (n *network) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Por
 				gwIP = ep.Iface().Address().IP
 			}
 
-			sb.rmLBBackend(ip, vip, fwMark, ingressPorts, ep.Iface().Address(), gwIP, rmService, n.ingress, n.networkType)
+			sb.rmLBBackend(ip, vip, fwMark, ingressPorts, ep.Iface().Address(), gwIP, rmService, n.ingress)
 		}
 
 		return false
@@ -395,7 +395,7 @@ func (n *network) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Por
 }
 
 // Add loadbalancer backend into one connected sandbox.
-func (sb *sandbox) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*PortConfig, eIP *net.IPNet, gwIP net.IP, addService bool, isIngressNetwork bool, networkType string) {
+func (sb *sandbox) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*PortConfig, eIP *net.IPNet, gwIP net.IP, addService bool, isIngressNetwork bool) {
 	if sb.osSbox == nil {
 		return
 	}
@@ -404,14 +404,9 @@ func (sb *sandbox) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*P
 		return
 	}
 
-	netns := ""
-	if networkType != "macvlans" {
-		netns = sb.Key()
-	}
-
-	i, err := ipvs.New(netns)
+	i, err := ipvs.New(sb.Key())
 	if err != nil {
-		logrus.Errorf("Failed to create an ipvs handle for sbox: %v", err)
+		logrus.Errorf("Failed to create an ipvs handle for sbox %s: %v", sb.Key(), err)
 		return
 	}
 	defer i.Close()
@@ -433,7 +428,7 @@ func (sb *sandbox) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*P
 		}
 
 		logrus.Debugf("Creating service for vip %s fwMark %d ingressPorts %#v", vip, fwMark, iPorts)
-		if err := invokeFWMarker(netns, vip, fwMark, iPorts, eIP, false); err != nil {
+		if err := invokeFWMarker(sb.Key(), vip, fwMark, iPorts, eIP, false); err != nil {
 			logrus.Errorf("Failed to add firewall mark rule in sbox %s: %v", sb.Key(), err)
 			return
 		}
@@ -459,7 +454,7 @@ func (sb *sandbox) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*P
 }
 
 // Remove loadbalancer backend from one connected sandbox.
-func (sb *sandbox) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*PortConfig, eIP *net.IPNet, gwIP net.IP, rmService bool, isIngressNetwork bool, networkType string) {
+func (sb *sandbox) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*PortConfig, eIP *net.IPNet, gwIP net.IP, rmService bool, isIngressNetwork bool) {
 	if sb.osSbox == nil {
 		return
 	}
@@ -468,14 +463,9 @@ func (sb *sandbox) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Po
 		return
 	}
 
-	netns := ""
-	if networkType != "macvlans" {
-		netns = sb.Key()
-	}
-
-	i, err := ipvs.New("")
+	i, err := ipvs.New(sb.Key())
 	if err != nil {
-		logrus.Errorf("Failed to create an ipvs handle for sbox: %v", err)
+		logrus.Errorf("Failed to create an ipvs handle for sbox %s: %v", sb.Key(), err)
 		return
 	}
 	defer i.Close()
@@ -509,7 +499,7 @@ func (sb *sandbox) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Po
 			}
 		}
 
-		if err := invokeFWMarker(netns, vip, fwMark, iPorts, eIP, true); err != nil {
+		if err := invokeFWMarker(sb.Key(), vip, fwMark, iPorts, eIP, true); err != nil {
 			logrus.Errorf("Failed to add firewall mark rule in sbox %s: %v", sb.Key(), err)
 		}
 	}
@@ -796,18 +786,16 @@ func fwMarker() {
 		rules = append(rules, rule)
 	}
 
-	if os.Args[1] != "" {
-		ns, err := netns.GetFromPath(os.Args[1])
-		if err != nil {
-			logrus.Errorf("failed get network namespace %q: %v", os.Args[1], err)
-			os.Exit(3)
-		}
-		defer ns.Close()
+	ns, err := netns.GetFromPath(os.Args[1])
+	if err != nil {
+		logrus.Errorf("failed get network namespace %q: %v", os.Args[1], err)
+		os.Exit(3)
+	}
+	defer ns.Close()
 
-		if err := netns.Set(ns); err != nil {
-			logrus.Errorf("setting into container net ns %v failed, %v", os.Args[1], err)
-			os.Exit(4)
-		}
+	if err := netns.Set(ns); err != nil {
+		logrus.Errorf("setting into container net ns %v failed, %v", os.Args[1], err)
+		os.Exit(4)
 	}
 
 	if addDelOpt == "-A" {

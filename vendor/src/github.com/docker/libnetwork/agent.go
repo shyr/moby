@@ -373,7 +373,7 @@ func (ep *endpoint) addToCluster() error {
 		var ingressPorts []*PortConfig
 		if ep.svcID != "" {
 			// Gossip ingress ports only in ingress network.
-			if n.ingress {
+			if n.ingress || n.networkType == "macvlans" {
 				ingressPorts = ep.ingressPorts
 			}
 

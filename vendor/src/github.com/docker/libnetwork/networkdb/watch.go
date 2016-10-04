@@ -1,6 +1,8 @@
 package networkdb
 
-import "github.com/docker/go-events"
+import (
+	"github.com/docker/go-events"
+)
 
 type opType uint8
 

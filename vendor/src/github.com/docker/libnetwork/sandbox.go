@@ -14,6 +14,8 @@ import (
 	"github.com/docker/libnetwork/netlabel"
 	"github.com/docker/libnetwork/osl"
 	"github.com/docker/libnetwork/types"
+	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 )
 
 // Sandbox provides the control over the network container entity. It is a one to one mapping with the container.
@@ -762,6 +764,44 @@ func (sb *sandbox) releaseOSSbox() {
 	osSbox.Destroy()
 }
 
+func (sb *sandbox) setTunnelVIP(vip *netlink.Addr) error {
+	log.Debugf("Setting tunnel VIP: sandbox: %s vip: %s", sb.id, vip.String())
+
+	origns, err := netns.Get()
+	if err != nil {
+		return err
+	}
+	defer origns.Close()
+
+	ns, err := netns.GetFromPath(sb.Key())
+	if err != nil {
+		return err
+	}
+
+	if err := netns.Set(ns); err != nil {
+		return err
+	}
+
+	tunnel, err := netlink.LinkByName("tunl0")
+	if err != nil {
+		return err
+	}
+
+	if err := netlink.AddrAdd(tunnel, vip); err != nil {
+		return err
+	}
+
+	if err := netlink.LinkSetUp(tunnel); err != nil {
+		return err
+	}
+
+	if err := netns.Set(origns); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (sb *sandbox) restoreOslSandbox() error {
 	var routes []*types.StaticRoute
 
@@ -789,9 +829,17 @@ func (sb *sandbox) restoreOslSandbox() error {
 		if len(i.llAddrs) != 0 {
 			ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().LinkLocalAddresses(i.llAddrs))
 		}
-		if len(ep.virtualIP) != 0 && ep.network.networkType != "macvlans" {
-			vipAlias := &net.IPNet{IP: ep.virtualIP, Mask: net.CIDRMask(32, 32)}
-			ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().IPAliases([]*net.IPNet{vipAlias}))
+		if len(ep.virtualIP) != 0 {
+			switch ep.network.networkType {
+			case "macvlans":
+				ipAddr := &netlink.Addr{IPNet: &net.IPNet{ep.virtualIP, net.IPv4Mask(255, 255, 255, 255)}}
+				if err := sb.setTunnelVIP(ipAddr); err != nil {
+					log.Warnf("Failed to set tunnel interface for VIP: %s", err)
+				}
+			default:
+				vipAlias := &net.IPNet{IP: ep.virtualIP, Mask: net.CIDRMask(32, 32)}
+				ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().IPAliases([]*net.IPNet{vipAlias}))
+			}
 		}
 		Ifaces[fmt.Sprintf("%s+%s", i.srcName, i.dstPrefix)] = ifaceOptions
 		if joinInfo != nil {
@@ -846,9 +894,17 @@ func (sb *sandbox) populateNetworkResources(ep *endpoint) error {
 		if len(i.llAddrs) != 0 {
 			ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().LinkLocalAddresses(i.llAddrs))
 		}
-		if len(ep.virtualIP) != 0 && ep.network.networkType != "macvlans" {
-			vipAlias := &net.IPNet{IP: ep.virtualIP, Mask: net.CIDRMask(32, 32)}
-			ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().IPAliases([]*net.IPNet{vipAlias}))
+		if len(ep.virtualIP) != 0 {
+			switch ep.network.networkType {
+			case "macvlans":
+				ipAddr := &netlink.Addr{IPNet: &net.IPNet{ep.virtualIP, net.IPv4Mask(255, 255, 255, 255)}}
+				if err := sb.setTunnelVIP(ipAddr); err != nil {
+					log.Warnf("Failed to set tunnel interface for VIP: %s", err)
+				}
+			default:
+				vipAlias := &net.IPNet{IP: ep.virtualIP, Mask: net.CIDRMask(32, 32)}
+				ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().IPAliases([]*net.IPNet{vipAlias}))
+			}
 		}
 		if i.mac != nil {
 			ifaceOptions = append(ifaceOptions, sb.osSbox.InterfaceOptions().MacAddress(i.mac))

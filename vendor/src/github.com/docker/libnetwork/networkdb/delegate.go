@@ -66,7 +66,6 @@ func (nDB *NetworkDB) handleNetworkEvent(nEvent *NetworkEvent) bool {
 		ltime: nEvent.LTime,
 	}
 
-	nDB.deleteNetworkNode(nEvent.NetworkID, nEvent.NodeName)
 	nDB.networkNodes[nEvent.NetworkID] = append(nDB.networkNodes[nEvent.NetworkID], nEvent.NodeName)
 	return true
 }

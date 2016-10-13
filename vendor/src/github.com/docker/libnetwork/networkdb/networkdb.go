@@ -378,7 +378,6 @@ func (nDB *NetworkDB) JoinNetwork(nid string) error {
 		},
 		RetransmitMult: 4,
 	}
-	nDB.deleteNetworkNode(nid, nDB.config.NodeName)
 	nDB.networkNodes[nid] = append(nDB.networkNodes[nid], nDB.config.NodeName)
 	networkNodes := nDB.networkNodes[nid]
 	nDB.Unlock()

@@ -189,6 +189,7 @@ type network struct {
 	ingress      bool
 	driverTables []string
 	dynamic      bool
+	gorbClient   *GorbClient
 	sync.Mutex
 }
 

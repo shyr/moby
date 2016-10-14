@@ -341,7 +341,7 @@ func (sb *sandbox) populateLoadbalancers(ep *endpoint) {
 		addService := true
 		for _, ip := range lb.backEnds {
 			sb.addLBBackend(ip, lb.vip, lb.fwMark, lb.service.ingressPorts,
-				eIP, gwIP, addService, n.ingress, n.networkType)
+				eIP, gwIP, addService, n.ingress)
 			addService = false
 		}
 		lb.service.Unlock()
@@ -352,6 +352,12 @@ func (sb *sandbox) populateLoadbalancers(ep *endpoint) {
 // this network. If needed add the service as well, as specified by
 // the addService bool.
 func (n *network) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*PortConfig, addService bool) {
+	if n.usesGorb() {
+		if err := n.addGorbBackend(ip, vip, ingressPorts, addService); err != nil {
+			logrus.Warnf("Failed to add backend to gorb: %v", err)
+		}
+	}
+
 	n.WalkEndpoints(func(e Endpoint) bool {
 		ep := e.(*endpoint)
 		if sb, ok := ep.getSandbox(); ok {
@@ -364,7 +370,7 @@ func (n *network) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Po
 				gwIP = ep.Iface().Address().IP
 			}
 
-			sb.addLBBackend(ip, vip, fwMark, ingressPorts, ep.Iface().Address(), gwIP, addService, n.ingress, n.networkType)
+			sb.addLBBackend(ip, vip, fwMark, ingressPorts, ep.Iface().Address(), gwIP, addService, n.ingress)
 		}
 
 		return false
@@ -375,6 +381,12 @@ func (n *network) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Po
 // connection to this network. If needed remove the service entry as
 // well, as specified by the rmService bool.
 func (n *network) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*PortConfig, rmService bool) {
+	if n.usesGorb() {
+		if err := n.rmGorbBackend(ip, vip, ingressPorts, rmService); err != nil {
+			logrus.Warnf("Failed to remove backend in gorb: %v", err)
+		}
+	}
+
 	n.WalkEndpoints(func(e Endpoint) bool {
 		ep := e.(*endpoint)
 		if sb, ok := ep.getSandbox(); ok {
@@ -387,7 +399,7 @@ func (n *network) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Por
 				gwIP = ep.Iface().Address().IP
 			}
 
-			sb.rmLBBackend(ip, vip, fwMark, ingressPorts, ep.Iface().Address(), gwIP, rmService, n.ingress, n.networkType)
+			sb.rmLBBackend(ip, vip, fwMark, ingressPorts, ep.Iface().Address(), gwIP, rmService, n.ingress)
 		}
 
 		return false
@@ -395,7 +407,7 @@ func (n *network) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Por
 }
 
 // Add loadbalancer backend into one connected sandbox.
-func (sb *sandbox) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*PortConfig, eIP *net.IPNet, gwIP net.IP, addService bool, isIngressNetwork bool, networkType string) {
+func (sb *sandbox) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*PortConfig, eIP *net.IPNet, gwIP net.IP, addService bool, isIngressNetwork bool) {
 	if sb.osSbox == nil {
 		return
 	}
@@ -404,14 +416,9 @@ func (sb *sandbox) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*P
 		return
 	}
 
-	netns := ""
-	if networkType != "macvlans" {
-		netns = sb.Key()
-	}
-
-	i, err := ipvs.New(netns)
+	i, err := ipvs.New(sb.Key())
 	if err != nil {
-		logrus.Errorf("Failed to create an ipvs handle for sbox: %v", err)
+		logrus.Errorf("Failed to create an ipvs handle for sbox %s: %v", sb.Key(), err)
 		return
 	}
 	defer i.Close()
@@ -433,7 +440,7 @@ func (sb *sandbox) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*P
 		}
 
 		logrus.Debugf("Creating service for vip %s fwMark %d ingressPorts %#v", vip, fwMark, iPorts)
-		if err := invokeFWMarker(netns, vip, fwMark, iPorts, eIP, false); err != nil {
+		if err := invokeFWMarker(sb.Key(), vip, fwMark, iPorts, eIP, false); err != nil {
 			logrus.Errorf("Failed to add firewall mark rule in sbox %s: %v", sb.Key(), err)
 			return
 		}
@@ -459,7 +466,7 @@ func (sb *sandbox) addLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*P
 }
 
 // Remove loadbalancer backend from one connected sandbox.
-func (sb *sandbox) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*PortConfig, eIP *net.IPNet, gwIP net.IP, rmService bool, isIngressNetwork bool, networkType string) {
+func (sb *sandbox) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*PortConfig, eIP *net.IPNet, gwIP net.IP, rmService bool, isIngressNetwork bool) {
 	if sb.osSbox == nil {
 		return
 	}
@@ -468,14 +475,9 @@ func (sb *sandbox) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Po
 		return
 	}
 
-	netns := ""
-	if networkType != "macvlans" {
-		netns = sb.Key()
-	}
-
-	i, err := ipvs.New("")
+	i, err := ipvs.New(sb.Key())
 	if err != nil {
-		logrus.Errorf("Failed to create an ipvs handle for sbox: %v", err)
+		logrus.Errorf("Failed to create an ipvs handle for sbox %s: %v", sb.Key(), err)
 		return
 	}
 	defer i.Close()
@@ -509,7 +511,7 @@ func (sb *sandbox) rmLBBackend(ip, vip net.IP, fwMark uint32, ingressPorts []*Po
 			}
 		}
 
-		if err := invokeFWMarker(netns, vip, fwMark, iPorts, eIP, true); err != nil {
+		if err := invokeFWMarker(sb.Key(), vip, fwMark, iPorts, eIP, true); err != nil {
 			logrus.Errorf("Failed to add firewall mark rule in sbox %s: %v", sb.Key(), err)
 		}
 	}
@@ -796,18 +798,16 @@ func fwMarker() {
 		rules = append(rules, rule)
 	}
 
-	if os.Args[1] != "" {
-		ns, err := netns.GetFromPath(os.Args[1])
-		if err != nil {
-			logrus.Errorf("failed get network namespace %q: %v", os.Args[1], err)
-			os.Exit(3)
-		}
-		defer ns.Close()
+	ns, err := netns.GetFromPath(os.Args[1])
+	if err != nil {
+		logrus.Errorf("failed get network namespace %q: %v", os.Args[1], err)
+		os.Exit(3)
+	}
+	defer ns.Close()
 
-		if err := netns.Set(ns); err != nil {
-			logrus.Errorf("setting into container net ns %v failed, %v", os.Args[1], err)
-			os.Exit(4)
-		}
+	if err := netns.Set(ns); err != nil {
+		logrus.Errorf("setting into container net ns %v failed, %v", os.Args[1], err)
+		os.Exit(4)
 	}
 
 	if addDelOpt == "-A" {
@@ -839,4 +839,112 @@ func fwMarker() {
 			os.Exit(5)
 		}
 	}
+}
+
+func (n *network) usesGorb() bool {
+	return n.gorbURL() != ""
+}
+
+func (n *network) gorbURL() string {
+	return n.Info().Labels()["gorb.url"]
+}
+
+func (n *network) initGorbClient() (*GorbClient, error) {
+	logrus.Debugf("Initializing gorb client for network '%s'", n.name)
+
+	errorFmt := "Failed to initialize gorb client for network '%s': %v"
+
+	if !n.usesGorb() {
+		return nil, fmt.Errorf(errorFmt, n.name, "gorb is not used")
+	}
+
+	gorbURL, err := url.Parse(n.gorbURL())
+	if err != nil {
+		return nil, fmt.Errorf(errorFmt, n.name, err)
+	}
+
+	n.gorbClient = NewGorbClient(gorbURL.String())
+
+	logrus.Debugf("Gorb client initialized for network '%s'", n.name)
+
+	return n.gorbClient, nil
+}
+
+func (n *network) GorbClient() (*GorbClient, error) {
+	if n.gorbClient != nil {
+		return n.gorbClient, nil
+	}
+
+	return n.initGorbClient()
+}
+
+func makeGorbServiceName(vip string, port uint16, proto string) string {
+	return fmt.Sprintf("%s-%d-%s", vip, port, proto)
+}
+
+func (n *network) rmGorbBackend(ip net.IP, vip net.IP, ports []*PortConfig, rmService bool) error {
+	logrus.Debugf("Removing gorb backend: ip: %s vip: %s ports: %+v", ip, vip, ports)
+
+	gorbClient, err := n.GorbClient()
+	if err != nil {
+		return fmt.Errorf("Failed to get gorb client: %v", err)
+	}
+
+	for _, port := range ports {
+		portNumber := uint16(port.TargetPort)
+		protocol := port.Protocol.String()
+		serviceName := makeGorbServiceName(vip.String(), portNumber, protocol)
+
+		if _, err := gorbClient.DeleteBackend(serviceName, ip.String()); err != nil {
+			return err
+		}
+
+		if rmService {
+			if _, err := gorbClient.DeleteService(serviceName); err != nil {
+				return err
+			}
+		}
+	}
+
+	logrus.Debugf("Gorb backend removed: ip: %s vip: %s ports: %+v", ip, vip, ports)
+
+	return nil
+}
+
+func (n *network) addGorbBackend(ip net.IP, vip net.IP, ports []*PortConfig, addService bool) error {
+	logrus.Debugf("Adding gorb backend: ip: %s vip: %s ports: %+v", ip, vip, ports)
+
+	gorbClient, err := n.GorbClient()
+	if err != nil {
+		return fmt.Errorf("Failed to get gorb client: %v", err)
+	}
+
+	for _, port := range ports {
+		if port.PublishedPort != port.TargetPort {
+			logrus.Warnf(
+				"Gorb load balancer does not support port forwarding. Publishing port '%s' instead of '%s' for vip '%s'.",
+				port.TargetPort, port.PublishedPort, vip)
+		}
+
+		portNumber := uint16(port.TargetPort)
+		protocol := port.Protocol.String()
+		serviceName := makeGorbServiceName(vip.String(), portNumber, protocol)
+
+		if addService {
+			serviceOptions := MakeGorbServiceOptions(vip.String(), portNumber, protocol)
+			if _, err := gorbClient.PutService(serviceName, serviceOptions); err != nil {
+				return err
+			}
+		}
+
+		backendOptions := MakeGorbBackendOptions(ip.String(), portNumber)
+
+		if _, err := gorbClient.PutBackend(serviceName, ip.String(), backendOptions); err != nil {
+			return err
+		}
+	}
+
+	logrus.Debugf("Gorb backend added: ip: %s vip: %s ports: %+v", ip, vip, ports)
+
+	return nil
 }

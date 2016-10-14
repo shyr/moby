@@ -61,11 +61,11 @@ clone git golang.org/x/sys eb2c74142fd19a79b3f237334c7384d5167b1b46 https://gith
 clone git github.com/docker/go-units 651fc226e7441360384da338d0fd37f2440ffbe3
 clone git github.com/docker/go-connections fa2850ff103453a9ad190da0df0af134f0314b3d
 clone git github.com/docker/engine-api 4eca04ae18f4f93f40196a17b9aa6e11262a7269
-clone git github.com/RackSec/srslog 259aed10dfa74ea2961eddd1d9847619f6e98837
+clone git github.com/RackSec/srslog 365bf33cd9acc21ae1c355209865f17228ca534e
 clone git github.com/imdario/mergo 0.2.1
 
 #get libnetwork packages
-clone git github.com/docker/libnetwork 82fb373e3eaa4e9bbb5b5ac148b0a3a71f80fca6
+clone git github.com/docker/libnetwork 7ba98d93bd24a04c4a096bf119e9791257631060
 clone git github.com/docker/go-events afb2b9f2c23f33ada1a22b03651775fdc65a5089
 clone git github.com/armon/go-radix e39d623f12e8e41c7b5529e9a9dd67a1e2261f80
 clone git github.com/armon/go-metrics eb0af217e5e9747e41dd5303755356b62d28e3ec
@@ -83,7 +83,7 @@ clone git github.com/coreos/etcd v2.3.2
 fix_rewritten_imports github.com/coreos/etcd
 clone git github.com/ugorji/go f1f1a805ed361a0e078bb537e4ea78cd37dcf065
 clone git github.com/hashicorp/consul v0.5.2
-clone git github.com/boltdb/bolt v1.2.1
+clone git github.com/boltdb/bolt fff57c100f4dea1905678da7e90d92429dff2904
 clone git github.com/miekg/dns 75e6e86cc601825c5dbcd4e0c209eab180997cd7
 
 # get graph and distribution packages
@@ -102,8 +102,8 @@ clone git github.com/miekg/pkcs11 df8ae6ca730422dba20c768ff38ef7d79077a59f
 clone git github.com/docker/go v1.5.1-1-1-gbaf439e
 clone git github.com/agl/ed25519 d2b94fd789ea21d12fac1a4443dd3a3f79cda72c
 
-clone git github.com/opencontainers/runc cc29e3dded8e27ba8f65738f40d251c885030a28 # libcontainer
-clone git github.com/opencontainers/specs v1.0.0-rc1 # specs
+clone git github.com/opencontainers/runc 02f8fa7863dd3f82909a73e2061897828460d52f # libcontainer
+clone git github.com/opencontainers/specs 1c7c27d043c2a5e513a44084d2b10d77d1402b8c # specs
 clone git github.com/seccomp/libseccomp-golang 32f571b70023028bd57d9288c20efbcb237f3ce0
 # libcontainer deps (see src/github.com/opencontainers/runc/Godeps/Godeps.json)
 clone git github.com/coreos/go-systemd v4
@@ -114,7 +114,7 @@ clone git github.com/golang/protobuf 3c84672111d91bb5ac31719e112f9f7126a0e26e
 # gelf logging driver deps
 clone git github.com/Graylog2/go-gelf aab2f594e4585d43468ac57287b0dece9d806883
 
-clone git github.com/fluent/fluent-logger-golang v1.1.0
+clone git github.com/fluent/fluent-logger-golang v1.2.0
 # fluent-logger-golang deps
 clone git github.com/philhofer/fwd 899e4efba8eaa1fea74175308f3fae18ff3319fa
 clone git github.com/tinylib/msgp 75ee40d2601edf122ef667e2a07d600d4c44490c
@@ -136,10 +136,10 @@ clone git google.golang.org/cloud dae7e3d993bc3812a2185af60552bb6b847e52a0 https
 clone git github.com/docker/docker-credential-helpers v0.3.0
 
 # containerd
-clone git github.com/docker/containerd 0ac3cd1be170d180b2baed755e8f0da547ceb267
+clone git github.com/docker/containerd 0366d7e9693c930cf18c0f50cc16acec064e96c5
 
 # cluster
-clone git github.com/docker/swarmkit bfbec9f2b6a487100a80027f6ee16cc0c646a8f5
+clone git github.com/docker/swarmkit e239bc901fd6f5c85b36904e89f1b64c8c0635f2
 clone git github.com/golang/mock bd3c8e81be01eef76d4b503f5e687d2d1354d2d9
 clone git github.com/gogo/protobuf 43a2e0b1c32252bfbbdf81f7faa7a88fb3fa4028
 clone git github.com/cloudflare/cfssl b895b0549c0ff676f92cf09ba971ae02bb41367b

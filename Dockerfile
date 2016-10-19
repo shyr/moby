@@ -121,11 +121,6 @@ RUN set -x \
 #            will need updating, to avoid errors. Ping #docker-maintainers on IRC
 #            with a heads-up.
 ENV GO_VERSION 1.6.3
-RUN curl -fsSL "https://storage.googleapis.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" \
-	| tar -xzC /usr/local
-
-ENV PATH /go/bin:/usr/local/go/bin:$PATH
-ENV GOPATH /go:/go/src/github.com/docker/docker/vendor
 
 # Compile Go for cross compilation
 ENV DOCKER_CROSSPLATFORMS \
@@ -133,6 +128,20 @@ ENV DOCKER_CROSSPLATFORMS \
 	darwin/amd64 \
 	freebsd/amd64 freebsd/386 freebsd/arm \
 	windows/amd64 windows/386
+
+RUN curl -fsSL "https://storage.googleapis.com/golang/go1.4.3.linux-amd64.tar.gz" \
+	| tar -xzC /root && \
+	mv /root/go /root/go1.4 && \
+	cd /usr/local && \
+	curl -fsSL "https://storage.googleapis.com/golang/go$GO_VERSION.src.tar.gz" \
+	| tar -xzC /usr/local && \
+	cd go && \
+	printf 'diff --git a/src/runtime/sys_darwin_amd64.s b/src/runtime/sys_darwin_amd64.s\nindex e09b906..fa8ff2f 100644\n--- a/src/runtime/sys_darwin_amd64.s\n+++ b/src/runtime/sys_darwin_amd64.s\n@@ -157,6 +157,7 @@ systime:\n\t// Fall back to system call (usually first call in this thread).\n\tMOVQ\tSP, DI\n\tMOVQ\t$0, SI\n+\tMOVQ\t$0, DX  // required as of Sierra; Issue 16570\n\tMOVL\t$(0x2000000+116), AX\n\tSYSCALL\n\tCMPQ\tAX, $0\n' | patch -p1 && \
+	cd src && \
+	./make.bash
+
+ENV PATH /go/bin:/usr/local/go/bin:$PATH
+ENV GOPATH /go:/go/src/github.com/docker/docker/vendor
 
 # This has been commented out and kept as reference because we don't support compiling with older Go anymore.
 # ENV GOFMT_VERSION 1.3.3
@@ -233,7 +242,7 @@ RUN set -x \
 	&& rm -rf "$GOPATH"
 
 # Install runc
-ENV RUNC_COMMIT cc29e3dded8e27ba8f65738f40d251c885030a28
+ENV RUNC_COMMIT 02f8fa7863dd3f82909a73e2061897828460d52f
 RUN set -x \
 	&& export GOPATH="$(mktemp -d)" \
 	&& git clone https://github.com/opencontainers/runc.git "$GOPATH/src/github.com/opencontainers/runc" \
@@ -244,7 +253,7 @@ RUN set -x \
 	&& rm -rf "$GOPATH"
 
 # Install containerd
-ENV CONTAINERD_COMMIT 0ac3cd1be170d180b2baed755e8f0da547ceb267
+ENV CONTAINERD_COMMIT 0366d7e9693c930cf18c0f50cc16acec064e96c5
 RUN set -x \
 	&& export GOPATH="$(mktemp -d)" \
 	&& git clone https://github.com/docker/containerd.git "$GOPATH/src/github.com/docker/containerd" \

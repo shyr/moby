@@ -87,6 +87,13 @@ func (n *networkRouter) postNetworkCreate(ctx context.Context, w http.ResponseWr
 		return libnetwork.NetworkNameError(create.Name)
 	}
 
+	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+		if create.Labels == nil {
+			create.Labels = make(map[string]string)
+		}
+		create.Labels["com.docker.swarm.owner"] = r.TLS.PeerCertificates[0].Subject.CommonName
+	}
+
 	nw, err := n.backend.CreateNetwork(create)
 	if err != nil {
 		if _, ok := err.(libnetwork.ManagerRedirectError); !ok {

@@ -39,7 +39,7 @@ func (d *driver) CreateEndpoint(nid, eid string, ifInfo driverapi.InterfaceInfo,
 		return fmt.Errorf("network id %q not found", nid)
 	}
 
-	if ipRangesString := epOptions[netlabel.MacvlansIpRanges]; ipRangesString != nil {
+	if ipRangesString, ok := epOptions[netlabel.MacvlansIpRanges]; ok {
 		ipRanges := []net.IPNet{}
 		for _, ipRange := range strings.Split(ipRangesString.(string), ",") {
 			if _, cidr, err := net.ParseCIDR(ipRange); cidr != nil {

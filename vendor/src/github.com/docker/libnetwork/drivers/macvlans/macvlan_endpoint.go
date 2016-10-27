@@ -187,7 +187,7 @@ func (d *driver) deleteEndpointFromStore(e *endpoint) error {
 }
 
 func (ep *endpoint) DataScope() string {
-	return datastore.GlobalScope
+	return datastore.LocalScope
 }
 
 func (ep *endpoint) New() datastore.KVObject {

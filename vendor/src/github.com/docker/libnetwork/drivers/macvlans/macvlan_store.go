@@ -3,11 +3,9 @@ package macvlans
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/libnetwork/datastore"
-	"github.com/docker/libnetwork/types"
 )
 
 const (
@@ -224,105 +222,5 @@ func (config *configuration) CopyTo(o datastore.KVObject) error {
 }
 
 func (config *configuration) DataScope() string {
-	return datastore.GlobalScope
-}
-
-func (ep *endpoint) MarshalJSON() ([]byte, error) {
-	epMap := make(map[string]interface{})
-	epMap["id"] = ep.id
-	epMap["nid"] = ep.nid
-	epMap["SrcName"] = ep.srcName
-	if len(ep.mac) != 0 {
-		epMap["MacAddress"] = ep.mac.String()
-	}
-	if ep.addr != nil {
-		epMap["Addr"] = ep.addr.String()
-	}
-	if ep.addrv6 != nil {
-		epMap["Addrv6"] = ep.addrv6.String()
-	}
-	return json.Marshal(epMap)
-}
-
-func (ep *endpoint) UnmarshalJSON(b []byte) error {
-	var (
-		err   error
-		epMap map[string]interface{}
-	)
-
-	if err = json.Unmarshal(b, &epMap); err != nil {
-		return fmt.Errorf("Failed to unmarshal to macvlan endpoint: %v", err)
-	}
-
-	if v, ok := epMap["MacAddress"]; ok {
-		if ep.mac, err = net.ParseMAC(v.(string)); err != nil {
-			return types.InternalErrorf("failed to decode macvlan endpoint MAC address (%s) after json unmarshal: %v", v.(string), err)
-		}
-	}
-	if v, ok := epMap["Addr"]; ok {
-		if ep.addr, err = types.ParseCIDR(v.(string)); err != nil {
-			return types.InternalErrorf("failed to decode macvlan endpoint IPv4 address (%s) after json unmarshal: %v", v.(string), err)
-		}
-	}
-	if v, ok := epMap["Addrv6"]; ok {
-		if ep.addrv6, err = types.ParseCIDR(v.(string)); err != nil {
-			return types.InternalErrorf("failed to decode macvlan endpoint IPv6 address (%s) after json unmarshal: %v", v.(string), err)
-		}
-	}
-	ep.id = epMap["id"].(string)
-	ep.nid = epMap["nid"].(string)
-	ep.srcName = epMap["SrcName"].(string)
-
-	return nil
-}
-
-func (ep *endpoint) Key() []string {
-	return []string{macvlanEndpointPrefix, ep.id}
-}
-
-func (ep *endpoint) KeyPrefix() []string {
-	return []string{macvlanEndpointPrefix}
-}
-
-func (ep *endpoint) Value() []byte {
-	b, err := json.Marshal(ep)
-	if err != nil {
-		return nil
-	}
-	return b
-}
-
-func (ep *endpoint) SetValue(value []byte) error {
-	return json.Unmarshal(value, ep)
-}
-
-func (ep *endpoint) Index() uint64 {
-	return ep.dbIndex
-}
-
-func (ep *endpoint) SetIndex(index uint64) {
-	ep.dbIndex = index
-	ep.dbExists = true
-}
-
-func (ep *endpoint) Exists() bool {
-	return ep.dbExists
-}
-
-func (ep *endpoint) Skip() bool {
-	return false
-}
-
-func (ep *endpoint) New() datastore.KVObject {
-	return &endpoint{}
-}
-
-func (ep *endpoint) CopyTo(o datastore.KVObject) error {
-	dstEp := o.(*endpoint)
-	*dstEp = *ep
-	return nil
-}
-
-func (ep *endpoint) DataScope() string {
 	return datastore.GlobalScope
 }

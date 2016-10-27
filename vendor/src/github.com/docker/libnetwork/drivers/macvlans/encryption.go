@@ -79,7 +79,7 @@ func (e *encrMap) String() string {
 func (d *driver) checkEncryption(nid string, rIP net.IP, vxlanID uint32, isLocal, add bool) error {
 	log.Debugf("checkEncryption(%s, %v, %d, %t)", nid[0:7], rIP, vxlanID, isLocal)
 
-	n := d.network(nid)
+	n, _ := d.network(nid)
 	if n == nil || !n.secure {
 		return nil
 	}
@@ -103,7 +103,7 @@ func (d *driver) checkEncryption(nid string, rIP net.IP, vxlanID uint32, isLocal
 			log.Warnf("Failed to retrieve list of participating nodes in overlay network %s: %v", nid[0:5], err)
 		}
 	default:
-		if len(d.network(nid).endpoints) > 0 {
+		if len(n.endpoints) > 0 {
 			nodes[rIP.String()] = rIP
 		}
 	}

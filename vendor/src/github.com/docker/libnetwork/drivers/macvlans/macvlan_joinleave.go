@@ -14,11 +14,11 @@ import (
 // Join method is invoked when a Sandbox is attached to an endpoint.
 func (d *driver) Join(nid, eid string, sboxKey string, jinfo driverapi.JoinInfo, options map[string]interface{}) error {
 	defer osl.InitOSContext()()
-	n, err := d.getNetwork(nid)
+	n, err := d.network(nid)
 	if err != nil {
 		return err
 	}
-	endpoint := n.endpoint(eid)
+	endpoint, _ := n.endpoint(eid)
 	if endpoint == nil {
 		return fmt.Errorf("could not find endpoint with id %s", eid)
 	}
@@ -34,7 +34,7 @@ func (d *driver) Join(nid, eid string, sboxKey string, jinfo driverapi.JoinInfo,
 	}
 	// bind the generated iface name to the endpoint
 	endpoint.srcName = vethName
-	ep := n.endpoint(eid)
+	ep, _ := n.endpoint(eid)
 	if ep == nil {
 		return fmt.Errorf("could not find endpoint with id %s", eid)
 	}
@@ -83,24 +83,6 @@ func (d *driver) Join(nid, eid string, sboxKey string, jinfo driverapi.JoinInfo,
 	return nil
 }
 
-// Leave method is invoked when a Sandbox detaches from an endpoint.
-func (d *driver) Leave(nid, eid string) error {
-	defer osl.InitOSContext()()
-	network, err := d.getNetwork(nid)
-	if err != nil {
-		return err
-	}
-	endpoint, err := network.getEndpoint(eid)
-	if err != nil {
-		return err
-	}
-	if endpoint == nil {
-		return fmt.Errorf("could not find endpoint with id %s", eid)
-	}
-
-	return nil
-}
-
 // getSubnetforIP returns the ipv4 subnet to which the given IP belongs
 func (n *network) getSubnetforIPv4(ip *net.IPNet) *ipv4Subnet {
 	for _, s := range n.config.Ipv4Subnets {
@@ -138,6 +120,28 @@ func (n *network) getSubnetforIPv6(ip *net.IPNet) *ipv6Subnet {
 		if snet.Contains(ip.IP) {
 			return s
 		}
+	}
+
+	return nil
+}
+
+// TODO: overlay 의 joinleave.go와 달리 이 부분이 비어있다. 괜찮은가??
+func (d *driver) EventNotify(etype driverapi.EventType, nid, tableName, key string, value []byte) {
+}
+
+// Leave method is invoked when a Sandbox detaches from an endpoint.
+func (d *driver) Leave(nid, eid string) error {
+	defer osl.InitOSContext()()
+	network, err := d.network(nid)
+	if err != nil {
+		return err
+	}
+	endpoint, err := network.endpoint(eid)
+	if err != nil {
+		return err
+	}
+	if endpoint == nil {
+		return fmt.Errorf("could not find endpoint with id %s", eid)
 	}
 
 	return nil

@@ -260,7 +260,7 @@ func (d *driver) peerAdd(nid, eid string, peerIP net.IP, peerIPMask net.IPMask,
 		d.peerDbAdd(nid, eid, peerIP, peerIPMask, peerMac, vtep, false)
 	}
 
-	n := d.network(nid)
+	n, _ := d.network(nid)
 	if n == nil {
 		return nil
 	}
@@ -318,7 +318,7 @@ func (d *driver) peerDelete(nid, eid string, peerIP net.IP, peerIPMask net.IPMas
 		pEntry = d.peerDbDelete(nid, eid, peerIP, peerIPMask, peerMac, vtep)
 	}
 
-	n := d.network(nid)
+	n, _ := d.network(nid)
 	if n == nil {
 		return nil
 	}

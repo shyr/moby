@@ -223,8 +223,20 @@ func (d *driver) DeleteNetwork(nid string) error {
 	}
 	// delete the *network
 	d.deleteNetwork(nid)
+
+	vnis, err := n.releaseVxlanID()
+	if err != nil {
+		return err
+	}
+
+	if n.secure {
+		for _, vni := range vnis {
+			programMangle(vni, false)
+		}
+	}
+
 	// delete the network record from persistent cache
-	err := d.storeDelete(n.config)
+	err = d.storeDelete(n.config)
 	if err != nil {
 		return fmt.Errorf("error deleting deleting id %s from datastore: %v", nid, err)
 	}
@@ -897,6 +909,36 @@ func (n *network) writeToStore() error {
 	}
 
 	return n.driver.store.PutObjectAtomic(n)
+}
+
+func (n *network) releaseVxlanID() ([]uint32, error) {
+	if len(n.subnets) == 0 {
+		return nil, nil
+	}
+
+	if n.driver.store != nil {
+		if err := n.driver.store.DeleteObjectAtomic(n); err != nil {
+			if err == datastore.ErrKeyModified || err == datastore.ErrKeyNotFound {
+				// In both the above cases we can safely assume that the key has been removed by some other
+				// instance and so simply get out of here
+				return nil, nil
+			}
+
+			return nil, fmt.Errorf("failed to delete network to vxlan id map: %v", err)
+		}
+	}
+	var vnis []uint32
+	for _, s := range n.subnets {
+		if n.driver.vxlanIdm != nil {
+			vni := n.vxlanID(s)
+			vnis = append(vnis, vni)
+			n.driver.vxlanIdm.Release(uint64(vni))
+		}
+
+		n.setVxlanID(s, 0)
+	}
+
+	return vnis, nil
 }
 
 func (n *network) obtainVxlanID(s *subnet) error {

@@ -1,11 +1,13 @@
 package macvlans
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
 
-	"github.com/Sirupsen/logrus"
+	log "github.com/Sirupsen/logrus"
+	"github.com/docker/libnetwork/datastore"
 	"github.com/docker/libnetwork/driverapi"
 	"github.com/docker/libnetwork/netlabel"
 	"github.com/docker/libnetwork/netutils"
@@ -14,7 +16,45 @@ import (
 	"github.com/docker/libnetwork/types"
 )
 
+type endpointTable map[string]*endpoint
+
 const macvlansEndpointPrefix = "macvlans/endpoint"
+
+type endpoint struct {
+	id       string
+	nid      string
+	mac      net.HardwareAddr
+	addr     *net.IPNet
+	addrv6   *net.IPNet
+	srcName  string
+	dbIndex  uint64
+	dbExists bool
+}
+
+func (n *network) endpoint(eid string) (*endpoint, error) {
+	n.Lock()
+	defer n.Unlock()
+	if eid == "" {
+		return nil, fmt.Errorf("endpoint id %s not found", eid)
+	}
+	if ep, ok := n.endpoints[eid]; ok {
+		return ep, nil
+	}
+
+	return nil, nil
+}
+
+func (n *network) addEndpoint(ep *endpoint) {
+	n.Lock()
+	n.endpoints[ep.id] = ep
+	n.Unlock()
+}
+
+func (n *network) deleteEndpoint(eid string) {
+	n.Lock()
+	delete(n.endpoints, eid)
+	n.Unlock()
+}
 
 // isIpAcceptable returns whether any ip range contains the given ip address.
 func isIpAcceptable(ip net.IP, ipRanges []net.IPNet) bool {
@@ -34,7 +74,7 @@ func (d *driver) CreateEndpoint(nid, eid string, ifInfo driverapi.InterfaceInfo,
 	if err := validateID(nid, eid); err != nil {
 		return err
 	}
-	n, err := d.getNetwork(nid)
+	n, err := d.network(nid)
 	if err != nil {
 		return fmt.Errorf("network id %q not found", nid)
 	}
@@ -45,7 +85,7 @@ func (d *driver) CreateEndpoint(nid, eid string, ifInfo driverapi.InterfaceInfo,
 			if _, cidr, err := net.ParseCIDR(ipRange); cidr != nil {
 				ipRanges = append(ipRanges, *cidr)
 			} else {
-				logrus.Warnf("Invalid ip range: %s: %s", ipRange, err)
+				log.Warnf("Invalid ip range: %s: %s", ipRange, err)
 			}
 		}
 		addrs := []*net.IPNet{ifInfo.Address(), ifInfo.AddressIPv6()}
@@ -81,7 +121,7 @@ func (d *driver) CreateEndpoint(nid, eid string, ifInfo driverapi.InterfaceInfo,
 	if opt, ok := epOptions[netlabel.PortMap]; ok {
 		if _, ok := opt.([]types.PortBinding); ok {
 			if len(opt.([]types.PortBinding)) > 0 {
-				logrus.Warnf("%s driver does not support port mappings", macvlanType)
+				log.Warnf("%s driver does not support port mappings", macvlanType)
 			}
 		}
 	}
@@ -89,7 +129,7 @@ func (d *driver) CreateEndpoint(nid, eid string, ifInfo driverapi.InterfaceInfo,
 	if opt, ok := epOptions[netlabel.ExposedPorts]; ok {
 		if _, ok := opt.([]types.TransportPort); ok {
 			if len(opt.([]types.TransportPort)) > 0 {
-				logrus.Warnf("%s driver does not support port exposures", macvlanType)
+				log.Warnf("%s driver does not support port exposures", macvlanType)
 			}
 		}
 	}
@@ -109,11 +149,11 @@ func (d *driver) DeleteEndpoint(nid, eid string) error {
 	if err := validateID(nid, eid); err != nil {
 		return err
 	}
-	n := d.network(nid)
+	n, _ := d.network(nid)
 	if n == nil {
 		return fmt.Errorf("network id %q not found", nid)
 	}
-	ep := n.endpoint(eid)
+	ep, _ := n.endpoint(eid)
 	if ep == nil {
 		return fmt.Errorf("endpoint id %q not found", eid)
 	}
@@ -122,10 +162,126 @@ func (d *driver) DeleteEndpoint(nid, eid string) error {
 	}
 
 	if err := d.storeDelete(ep); err != nil {
-		logrus.Warnf("Failed to remove macvlan endpoint %s from store: %v", ep.id[0:7], err)
+		log.Warnf("Failed to remove macvlan endpoint %s from store: %v", ep.id[0:7], err)
 	}
 
 	n.deleteEndpoint(ep.id)
+
+	return nil
+}
+
+func (d *driver) EndpointOperInfo(nid, eid string) (map[string]interface{}, error) {
+	return make(map[string]interface{}, 0), nil
+}
+
+func (d *driver) deleteEndpointFromStore(e *endpoint) error {
+	if d.localStore == nil {
+		return fmt.Errorf("macvlans local store not initialized, ep not deleted")
+	}
+
+	if err := d.localStore.DeleteObjectAtomic(e); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ep *endpoint) DataScope() string {
+	return datastore.GlobalScope
+}
+
+func (ep *endpoint) New() datastore.KVObject {
+	return &endpoint{}
+}
+
+func (ep *endpoint) CopyTo(o datastore.KVObject) error {
+	dstEp := o.(*endpoint)
+	*dstEp = *ep
+	return nil
+}
+
+func (ep *endpoint) Key() []string {
+	return []string{macvlanEndpointPrefix, ep.id}
+}
+
+func (ep *endpoint) KeyPrefix() []string {
+	return []string{macvlanEndpointPrefix}
+}
+
+func (ep *endpoint) Index() uint64 {
+	return ep.dbIndex
+}
+
+func (ep *endpoint) SetIndex(index uint64) {
+	ep.dbIndex = index
+	ep.dbExists = true
+}
+
+func (ep *endpoint) Exists() bool {
+	return ep.dbExists
+}
+
+func (ep *endpoint) Skip() bool {
+	return false
+}
+
+func (ep *endpoint) Value() []byte {
+	b, err := json.Marshal(ep)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+func (ep *endpoint) SetValue(value []byte) error {
+	return json.Unmarshal(value, ep)
+}
+
+func (ep *endpoint) MarshalJSON() ([]byte, error) {
+	epMap := make(map[string]interface{})
+	epMap["id"] = ep.id
+	epMap["nid"] = ep.nid
+	epMap["SrcName"] = ep.srcName
+	if len(ep.mac) != 0 {
+		epMap["MacAddress"] = ep.mac.String()
+	}
+	if ep.addr != nil {
+		epMap["Addr"] = ep.addr.String()
+	}
+	if ep.addrv6 != nil {
+		epMap["Addrv6"] = ep.addrv6.String()
+	}
+	return json.Marshal(epMap)
+}
+
+func (ep *endpoint) UnmarshalJSON(b []byte) error {
+	var (
+		err   error
+		epMap map[string]interface{}
+	)
+
+	if err = json.Unmarshal(b, &epMap); err != nil {
+		return fmt.Errorf("Failed to unmarshal to macvlan endpoint: %v", err)
+	}
+
+	if v, ok := epMap["MacAddress"]; ok {
+		if ep.mac, err = net.ParseMAC(v.(string)); err != nil {
+			return types.InternalErrorf("failed to decode macvlan endpoint MAC address (%s) after json unmarshal: %v", v.(string), err)
+		}
+	}
+	if v, ok := epMap["Addr"]; ok {
+		if ep.addr, err = types.ParseCIDR(v.(string)); err != nil {
+			return types.InternalErrorf("failed to decode macvlan endpoint IPv4 address (%s) after json unmarshal: %v", v.(string), err)
+		}
+	}
+	if v, ok := epMap["Addrv6"]; ok {
+		if ep.addrv6, err = types.ParseCIDR(v.(string)); err != nil {
+			return types.InternalErrorf("failed to decode macvlan endpoint IPv6 address (%s) after json unmarshal: %v", v.(string), err)
+		}
+	}
+	ep.id = epMap["id"].(string)
+	ep.nid = epMap["nid"].(string)
+	ep.srcName = epMap["SrcName"].(string)
 
 	return nil
 }

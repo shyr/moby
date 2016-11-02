@@ -34,10 +34,46 @@ var (
 	vniTbl      = make(map[uint32]string)
 )
 
+type networkTable map[string]*network
+
+type subnet struct {
+	once      *sync.Once
+	vxlanName string
+	brName    string
+	vni       uint32
+	initErr   error
+	subnetIP  *net.IPNet
+	gwIP      *net.IPNet
+}
+
 type subnetJSON struct {
 	SubnetIP string
 	GwIP     string
 	Vni      uint32
+}
+
+type network struct {
+	id        string
+	sbox      osl.Sandbox
+	endpoints endpointTable
+	driver    *driver
+	config    *configuration
+	joinCnt   int
+	once      *sync.Once
+	initErr   error
+	initEpoch int
+	subnets   []*subnet // TODO: 혹시 config.ipv4Subnets와 통합해야 하는 것은 아닌가? 반드시 그럴 것 같다.
+	secure    bool
+	mtu       int
+	sync.Mutex
+}
+
+func (d *driver) NetworkAllocate(id string, option map[string]string, ipV4Data, ipV6Data []driverapi.IPAMData) (map[string]string, error) {
+	return nil, types.NotImplementedErrorf("not implemented")
+}
+
+func (d *driver) NetworkFree(id string) error {
+	return types.NotImplementedErrorf("not implemented")
 }
 
 // CreateNetwork the network for the specified driver type
@@ -143,10 +179,24 @@ func (d *driver) createNetwork(config *configuration) error {
 	return nil
 }
 
+// CreateNetwork에서 이미 사용된 parent를 재사용하는게 아닌지 확인하기 위해서 사용한다. 그 외의 용도는 전혀 없음
+// getNetworks Safely returns a slice of existing networks
+func (d *driver) getNetworks() []*network {
+	d.Lock()
+	defer d.Unlock()
+
+	ls := make([]*network, 0, len(d.networks))
+	for _, nw := range d.networks {
+		ls = append(ls, nw)
+	}
+
+	return ls
+}
+
 // DeleteNetwork the network for the specified driver type
 func (d *driver) DeleteNetwork(nid string) error {
 	defer osl.InitOSContext()()
-	n := d.network(nid)
+	n, _ := d.network(nid)
 	if n == nil {
 		return fmt.Errorf("network id %s not found", nid)
 	}
@@ -178,6 +228,14 @@ func (d *driver) DeleteNetwork(nid string) error {
 	if err != nil {
 		return fmt.Errorf("error deleting deleting id %s from datastore: %v", nid, err)
 	}
+	return nil
+}
+
+func (d *driver) ProgramExternalConnectivity(nid, eid string, options map[string]interface{}) error {
+	return nil
+}
+
+func (d *driver) RevokeExternalConnectivity(nid, eid string) error {
 	return nil
 }
 
@@ -672,6 +730,44 @@ func (n *network) watchMiss(nlSock *nl.NetlinkSocket) {
 			}
 		}
 	}
+}
+
+func (d *driver) addNetwork(n *network) {
+	d.Lock()
+	d.networks[n.id] = n
+	d.Unlock()
+}
+
+func (d *driver) deleteNetwork(nid string) {
+	d.Lock()
+	delete(d.networks, nid)
+	d.Unlock()
+}
+
+func (d *driver) network(nid string) (*network, error) {
+	d.Lock()
+	defer d.Unlock()
+	if nid == "" {
+		return nil, types.BadRequestErrorf("invalid network id: %s", nid)
+	}
+	if nw, ok := d.networks[nid]; ok {
+		return nw, nil
+	}
+
+	return nil, types.NotFoundErrorf("network not found: %s", nid)
+}
+
+func (n *network) sandbox() osl.Sandbox {
+	n.Lock()
+	defer n.Unlock()
+
+	return n.sbox
+}
+
+func (n *network) setSandbox(sbox osl.Sandbox) {
+	n.Lock()
+	n.sbox = sbox
+	n.Unlock()
 }
 
 func (n *network) Key() []string {

@@ -34,10 +34,6 @@ const (
 
 var driverModeOpt = macvlanType + modeOpt // mode --option macvlan_mode
 
-type endpointTable map[string]*endpoint
-
-type networkTable map[string]*network
-
 type driver struct {
 	eventCh      chan serf.Event
 	notifyCh     chan ovNotify
@@ -57,43 +53,6 @@ type driver struct {
 	localStore       datastore.DataStore
 	neighIP          string
 	joinOnce         sync.Once
-}
-
-type endpoint struct {
-	id       string
-	nid      string
-	mac      net.HardwareAddr
-	addr     *net.IPNet
-	addrv6   *net.IPNet
-	srcName  string
-	dbIndex  uint64
-	dbExists bool
-}
-
-type network struct {
-	id        string
-	sbox      osl.Sandbox
-	endpoints endpointTable
-	driver    *driver
-	config    *configuration
-	joinCnt   int
-	once      *sync.Once
-	initErr   error
-	initEpoch int
-	subnets   []*subnet // TODO: 혹시 config.ipv4Subnets와 통합해야 하는 것은 아닌가? 반드시 그럴 것 같다.
-	secure    bool
-	mtu       int
-	sync.Mutex
-}
-
-type subnet struct {
-	once      *sync.Once
-	vxlanName string
-	brName    string
-	vni       uint32
-	initErr   error
-	subnetIP  *net.IPNet
-	gwIP      *net.IPNet
 }
 
 // Init initializes and registers the libnetwork macvlan driver
@@ -139,116 +98,6 @@ func Init(dc driverapi.DriverCallback, config map[string]interface{}) error {
 	return dc.RegisterDriver(networkType, d, c)
 }
 
-func (d *driver) NetworkAllocate(id string, option map[string]string, ipV4Data, ipV6Data []driverapi.IPAMData) (map[string]string, error) {
-	return nil, types.NotImplementedErrorf("not implemented")
-}
-
-func (d *driver) NetworkFree(id string) error {
-	return types.NotImplementedErrorf("not implemented")
-}
-
-func (d *driver) EndpointOperInfo(nid, eid string) (map[string]interface{}, error) {
-	return make(map[string]interface{}, 0), nil
-}
-
-func (d *driver) Type() string {
-	return macvlanType
-}
-
-func (d *driver) ProgramExternalConnectivity(nid, eid string, options map[string]interface{}) error {
-	return nil
-}
-
-func (d *driver) RevokeExternalConnectivity(nid, eid string) error {
-	return nil
-}
-
-// DiscoverNew is a notification for a new discovery event, such as a new node joining a cluster
-func (d *driver) DiscoverNew(dType discoverapi.DiscoveryType, data interface{}) error {
-	var err error
-	switch dType {
-	case discoverapi.NodeDiscovery:
-		nodeData, ok := data.(discoverapi.NodeDiscoveryData)
-		if !ok || nodeData.Address == "" {
-			return fmt.Errorf("invalid discovery data")
-		}
-		d.nodeJoin(nodeData.Address, nodeData.BindAddress, nodeData.Self)
-	case discoverapi.DatastoreConfig:
-		if d.store != nil {
-			return types.ForbiddenErrorf("cannot accept datastore configuration: Overlay driver has a datastore configured already")
-		}
-		dsc, ok := data.(discoverapi.DatastoreConfigData)
-		if !ok {
-			return types.InternalErrorf("incorrect data in datastore configuration: %v", data)
-		}
-		d.store, err = datastore.NewDataStoreFromConfig(dsc)
-		if err != nil {
-			return types.InternalErrorf("failed to initialize data store: %v", err)
-		}
-	case discoverapi.EncryptionKeysConfig:
-		encrData, ok := data.(discoverapi.DriverEncryptionConfig)
-		if !ok {
-			return fmt.Errorf("invalid encryption key notification data")
-		}
-		keys := make([]*key, 0, len(encrData.Keys))
-		for i := 0; i < len(encrData.Keys); i++ {
-			k := &key{
-				value: encrData.Keys[i],
-				tag:   uint32(encrData.Tags[i]),
-			}
-			keys = append(keys, k)
-		}
-		d.setKeys(keys)
-	case discoverapi.EncryptionKeysUpdate:
-		var newKey, delKey, priKey *key
-		encrData, ok := data.(discoverapi.DriverEncryptionUpdate)
-		if !ok {
-			return fmt.Errorf("invalid encryption key notification data")
-		}
-		if encrData.Key != nil {
-			newKey = &key{
-				value: encrData.Key,
-				tag:   uint32(encrData.Tag),
-			}
-		}
-		if encrData.Primary != nil {
-			priKey = &key{
-				value: encrData.Primary,
-				tag:   uint32(encrData.PrimaryTag),
-			}
-		}
-		if encrData.Prune != nil {
-			delKey = &key{
-				value: encrData.Prune,
-				tag:   uint32(encrData.PruneTag),
-			}
-		}
-		d.updateKeys(newKey, priKey, delKey)
-	default:
-	}
-	return nil
-}
-
-// DiscoverDelete is a notification for a discovery delete event
-func (d *driver) DiscoverDelete(dType discoverapi.DiscoveryType, data interface{}) error {
-	return nil
-}
-
-func (d *driver) EventNotify(etype driverapi.EventType, nid, tableName, key string, value []byte) {
-}
-
-func (d *driver) deleteEndpointFromStore(e *endpoint) error {
-	if d.localStore == nil {
-		return fmt.Errorf("macvlans local store not initialized, ep not deleted")
-	}
-
-	if err := d.localStore.DeleteObjectAtomic(e); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // Endpoints are stored in the local store. Restore them and reconstruct the macvlans sandbox
 // Copied from restoreEndpoints() at vendor/src/github.com/docker/libnetwork/drivers/overlay/overlay.go
 func (d *driver) restoreEndpoints() error {
@@ -266,7 +115,7 @@ func (d *driver) restoreEndpoints() error {
 	}
 	for _, kvo := range kvol {
 		ep := kvo.(*endpoint)
-		n := d.network(ep.nid)
+		n, _ := d.network(ep.nid)
 		if n == nil {
 			logrus.Debugf("Network (%s) not found for restored endpoint (%s)", ep.nid[0:7], ep.id[0:7])
 			logrus.Debugf("Deleting stale macvlans endpoint (%s) from store", ep.id[0:7])
@@ -304,6 +153,10 @@ func (d *driver) restoreEndpoints() error {
 		d.peerDbAdd(ep.nid, ep.id, ep.addr.IP, ep.addr.Mask, ep.mac, net.ParseIP(d.advertiseAddress), true)
 	}
 	return nil
+}
+
+func (d *driver) Type() string {
+	return macvlanType
 }
 
 func validateSelf(node string) error {
@@ -375,12 +228,12 @@ func (d *driver) nodeJoin(advertiseAddress, bindAddress string, self bool) {
 }
 
 func (d *driver) pushLocalEndpointEvent(action, nid, eid string) {
-	n := d.network(nid)
+	n, _ := d.network(nid)
 	if n == nil {
 		logrus.Debugf("Error pushing local endpoint event for network %s", nid)
 		return
 	}
-	ep := n.endpoint(eid)
+	ep, _ := n.endpoint(eid)
 	if ep == nil {
 		logrus.Debugf("Error pushing local endpoint event for ep %s / %s", nid, eid)
 		return
@@ -394,4 +247,75 @@ func (d *driver) pushLocalEndpointEvent(action, nid, eid string) {
 		nw:     n,
 		ep:     ep,
 	}
+}
+
+// DiscoverNew is a notification for a new discovery event, such as a new node joining a cluster
+func (d *driver) DiscoverNew(dType discoverapi.DiscoveryType, data interface{}) error {
+	var err error
+	switch dType {
+	case discoverapi.NodeDiscovery:
+		nodeData, ok := data.(discoverapi.NodeDiscoveryData)
+		if !ok || nodeData.Address == "" {
+			return fmt.Errorf("invalid discovery data")
+		}
+		d.nodeJoin(nodeData.Address, nodeData.BindAddress, nodeData.Self)
+	case discoverapi.DatastoreConfig:
+		if d.store != nil {
+			return types.ForbiddenErrorf("cannot accept datastore configuration: Overlay driver has a datastore configured already")
+		}
+		dsc, ok := data.(discoverapi.DatastoreConfigData)
+		if !ok {
+			return types.InternalErrorf("incorrect data in datastore configuration: %v", data)
+		}
+		d.store, err = datastore.NewDataStoreFromConfig(dsc)
+		if err != nil {
+			return types.InternalErrorf("failed to initialize data store: %v", err)
+		}
+	case discoverapi.EncryptionKeysConfig:
+		encrData, ok := data.(discoverapi.DriverEncryptionConfig)
+		if !ok {
+			return fmt.Errorf("invalid encryption key notification data")
+		}
+		keys := make([]*key, 0, len(encrData.Keys))
+		for i := 0; i < len(encrData.Keys); i++ {
+			k := &key{
+				value: encrData.Keys[i],
+				tag:   uint32(encrData.Tags[i]),
+			}
+			keys = append(keys, k)
+		}
+		d.setKeys(keys)
+	case discoverapi.EncryptionKeysUpdate:
+		var newKey, delKey, priKey *key
+		encrData, ok := data.(discoverapi.DriverEncryptionUpdate)
+		if !ok {
+			return fmt.Errorf("invalid encryption key notification data")
+		}
+		if encrData.Key != nil {
+			newKey = &key{
+				value: encrData.Key,
+				tag:   uint32(encrData.Tag),
+			}
+		}
+		if encrData.Primary != nil {
+			priKey = &key{
+				value: encrData.Primary,
+				tag:   uint32(encrData.PrimaryTag),
+			}
+		}
+		if encrData.Prune != nil {
+			delKey = &key{
+				value: encrData.Prune,
+				tag:   uint32(encrData.PruneTag),
+			}
+		}
+		d.updateKeys(newKey, priKey, delKey)
+	default:
+	}
+	return nil
+}
+
+// DiscoverDelete is a notification for a discovery delete event, such as a node leaving a cluster
+func (d *driver) DiscoverDelete(dType discoverapi.DiscoveryType, data interface{}) error {
+	return nil
 }

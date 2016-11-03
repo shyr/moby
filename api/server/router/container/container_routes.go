@@ -351,6 +351,14 @@ func (s *containerRouter) postContainersCreate(ctx context.Context, w http.Respo
 	if err != nil {
 		return err
 	}
+	// insert com.docker.swarm.owner label from tls certificate's CN
+	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+		if config.Labels == nil {
+			config.Labels = make(map[string]string)
+		}
+		config.Labels["com.docker.swarm.owner"] = r.TLS.PeerCertificates[0].Subject.CommonName
+	}
+
 	version := httputils.VersionFromContext(ctx)
 	adjustCPUShares := versions.LessThan(version, "1.19")
 
